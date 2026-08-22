@@ -20,6 +20,7 @@ Primary tool: `~/.local/bin/webq` (bash, zsh-compatible). Falls back to raw `w3m
 - If `top` output is only trending links (wikipedia number articles, TV channels), the query was empty or mangled — check the URL before retrying.
 - DDG bot-check: `curl` to html/lite.duckduckgo.com returns HTTP 202 (challenge) — use w3m, it passes. Public SearXNG JSON instances usually return 429.
 - Some sites (e.g. github.com) make `w3m -dump` fail with `gzip: stdin: not in gzip format`. `webq get` already auto-falls back to `lynx -dump`; for raw calls use lynx directly on those sites.
+- JS-rendered sites (e.g. gismeteo.ru): HTML dump has structure but no dynamic data (temperatures, prices). Prefer their JSON API endpoints — `webq get` works fine on plain JSON URLs too (e.g. api.open-meteo.com).
 - Long pages: pipe through `head -n 200` or grep for keywords; don't dump a whole page into context.
 - Verify fast-changing facts (versions, dates) with at least 2 independent results before answering.
 
