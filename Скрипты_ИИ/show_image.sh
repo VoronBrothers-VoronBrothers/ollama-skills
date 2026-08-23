@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================
-# show_image.sh <картинка.png>
+# show_image.sh <картинка.png> [KONPID]
 # Показывает картинку оркестратору: своё окно konsole (по
 # PID-цепочке) → фокус → путь в буфер → ctrl+U → ESC →
 # Ctrl+Shift+V (вставить) → Enter. Следующий ход — со скетчком.
@@ -16,13 +16,14 @@ IMG="${1:?использование: show_image.sh <путь-к-картинк�
 [ -f "$IMG" ] || { echo "ОШИБКА: нет файла $IMG" >&2; exit 1; }
 
 # --- 1. Ищу своё konsole в PID-цепочке (bash→ollama→zsh→konsole) ---
+# readlink|basename сломан (basename: missing operand); используем cmdline-scan
 KONPID="${2:-}"
 if [ -z "$KONPID" ]; then
-  pid=$$
-  while [ "$pid" -gt 1 ]; do
-    exe="$(readlink /proc/$pid/exe 2>/dev/null | xargs basename 2>/dev/null || true)"
-    [ "$exe" = "konsole" ] && { KONPID="$pid"; break; }
-    pid="$(awk '{print $4}' /proc/$pid/stat 2>/dev/null || echo 1)"
+  p=$$
+  while [ "$p" -gt 1 ]; do
+    c=$(tr '\0' ' ' < /proc/$p/cmdline 2>/dev/null || true)
+    [[ $c == *konsole* ]] && { KONPID="$p"; break; }
+    p="$(awk '{print $4}' /proc/$p/stat 2>/dev/null || echo 1)"
   done
 fi
 [ -n "$KONPID" ] || { echo "ОШИБКА: konsole не найден (pid=$$, arg=$2)" >&2; exit 1; }
