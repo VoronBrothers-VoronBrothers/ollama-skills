@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# find → fdfind obvyorka (27.08.2026)
+#   -name/-iname/-path/-ipath/-wholename/-regex → paternity (glob/regex, --full-path gde nado)
+#   -type f|d|l → -t f|-t d|-t l ;  -maxdepth N → -d N ;  -ls → -l ;  -exec cmd {} ; → -x cmd
+#   -follow/-L/-H → -L ;  po umolchaniyu -H -I (skrytye i gitignore — kak v GNU find)
+# Nesopodderzhivayemye flagi (-print0, -delete, -mindepth, -size, -newer*, -not...) → nativny GNU find.
+orig=("$@")
+flags=() pattern="" execcmd=() paths=()
+n=${#orig[@]} i=0
+
+while (( i < n )); do
+  case "${orig[i]}" in
+    -name)                     flags+=(-g -s); pattern="${orig[i+1]}"; i=$((i+2)) ;;
+    -iname)                    flags+=(-g -i); pattern="${orig[i+1]}"; i=$((i+2)) ;;
+    -path|-ipath|-wholename|-iwholename)
+        # find -path = glob po vsemu puti; fd-glob ne pereyosyek /, prevrashchaem v regex:
+        #   [! → [^ ;  * → .* ;  ? → .  (sed: bash-zameshka ${p//[!]/} tretyot [!] kak klas)
+        p=$(printf '%s' "${orig[i+1]}" | sed -e 's/\[!/[^/g' -e 's/\*/.*/g' -e 's/?/./g')
+        [[ "${orig[i]}" == -i* ]] && flags+=(-i) || flags+=(-s)
+        flags+=(-p); pattern="$p"; i=$((i+2)) ;;
+    -regex)                    flags+=(-p -s); pattern="${orig[i+1]}"; i=$((i+2)) ;;
+    -iregex)                   flags+=(-p -i); pattern="${orig[i+1]}"; i=$((i+2)) ;;
+    -type)  case "${orig[i+1]}" in
+              f) flags+=(-t f) ;; d) flags+=(-t d) ;; l) flags+=(-t l) ;;
+              *) exec /usr/bin/find "${orig[@]}" ;;
+             esac; i=$((i+2)) ;;
+    -maxdepth)                 flags+=(-d "${orig[i+1]}"); i=$((i+2)) ;;
+    -ls)                       flags+=(-l) ;;
+    -print|-print0|-delete|-mindepth|-size|-newer|-mtime|-atime)
+        [[ "${orig[i]}" == "-print" ]] || exec /usr/bin/find "${orig[@]}" ;;   # -print = umolchaniye; ostal'noye → GNU
+    -exec)   cmd=(); j=$((i+1))
+            while (( j<n )) && [[ "${orig[j]}" != ";" ]]; do
+              [[ "${orig[j]}" != "{}" ]] && cmd+=("${orig[j]}"); j=$((j+1)); done
+            execcmd=("${cmd[@]}"); i=$j; [[ "${orig[i]}" == ";" ]] && i=$((i+1)) ;;
+    -follow|-L|-H)             flags+=(-L) ;;
+    *)   case "${orig[i]}" in
+          !|-*) exec /usr/bin/find "${orig[@]}" ;;   # luchshaya chet: neznany GNU-flag → nativny find
+          *)    paths+=("${orig[i]}") ;;
+         esac; i=$((i+1)) ;;
+  esac
+done
+
+cmd=(fdfind)
+for f in ${flags[@]+"${flags[@]}"}; do [[ "$f" == "-x" ]] || cmd+=("$f"); done
+cmd+=(-H -I)
+if [ -n "$pattern" ]; then
+  cmd+=("$pattern")
+elif (( ${#paths[@]} )); then
+  cmd+=("")                       # pustoy glob = vse, puti idut sledom
+fi
+(( ${#paths[@]} )) && cmd+=("${paths[@]}")
+(( ${#execcmd[@]} )) && cmd+=(-x "${execcmd[@]}")
+exec "${cmd[@]}"
