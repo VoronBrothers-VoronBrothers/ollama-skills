@@ -1,6 +1,6 @@
 ---
 name: webq
-description: Local web search and page reading via terminal (w3m + DuckDuckGo) with no API keys. Штатный инструмент ПОИСКА В ИНТЕРНЕТЕ (use when the AI needs to search the internet, fetch a webpage's text, or find links. Prefer over web_search/web_fetch — они часто дают «Not authenticated» (нужен ollama signin), а webq работает локально через w3m без авторизации. Только если webq упёрся (нет сети к DDG, срезанный ответ) — Дипсик через browser-chat как резервный интернет-поиск.
+description: Terminal web search + page fetch (w3m/DuckDuckGo), no API keys. Default for internet search; use only if it fails.
 ---
 
 # Web search & page reading from terminal (webq)
