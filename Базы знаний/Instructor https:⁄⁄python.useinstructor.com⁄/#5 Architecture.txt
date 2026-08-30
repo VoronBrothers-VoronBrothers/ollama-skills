@@ -1,0 +1,218 @@
+## Архитектура библиотеки `instructor`
+
+### Основной поток выполнения (High-Level Flow)
+
+```mermaid
+sequenceDiagram
+autonumber
+participant U as User Code
+participant I as Instructor (patched)
+participant R as Retry Layer (tenacity)
+participant C as Provider Client
+participant D as Dispatcher (process_response)
+participant H as Provider Handler (response/reask)
+participant M as Pydantic Model
+
+U->>I: chat.completions.create(response_model=..., **kwargs)
+Note right of I: patch() оборачивает create() кэшированием, шаблонизацией, retry и хуками
+I->>R: retry_sync/async(func=create, max_retries, strict, mode, hooks)
+loop attempts
+R->>C: create(**prepared_kwargs)
+C-->>R: raw response (provider-specific)
+R->>D: process_response(_async)(response, response_model, mode, stream)
+alt Streaming/Partial
+D->>M: Iterable/Partial.from_streaming_response(_async)
+D-->>R: Iterable/Partial model (или список элементов)
+else Standard
+D->>H: provider mode handler (format/parse selection)
+H-->>D: adjusted response_model/new_kwargs при необходимости
+D->>M: response_model.from_response(...)
+M-->>D: parsed model (с _raw_response)
+D-->>R: model (или адаптированный простой тип)
+end
+R-->>I: parsed model
+end
+I-->>U: final model (+ _raw_response на экземпляре)
+
+rect rgb(255,240,240)
+Note over R,H: При ошибках валидации/JSON → путь reask
+R->>H: handle_reask_kwargs(..., exception, failed_attempts)
+H-->>R: новые kwargs/messages для следующей попытки
+end
+```
+
+#### Ключевые компоненты и их ответственность
+
+- **`patch()`**
+Оборачивает `create()` провайдера, добавляя:
+- кэширование (lookup/save)
+- шаблонизацию (`prompt_template`)
+- строгий режим (`strict`)
+- хуки (`hooks`)
+- retry-логику
+
+- **Retry Layer**
+Выполняет вызов провайдера, управляет:
+- повторами при ошибках валидации/JSON
+- хуками (emit/update)
+- подсчётом usage
+- подготовкой `reask`-запросов
+
+- **Dispatcher**
+Выбирает путь парсинга по `Mode`, обрабатывает:
+- multimodal message conversion
+- привязку `_raw_response`
+- потоковый/частичный вывод
+
+- **Provider Handlers**
+Реализуют специфичные для провайдера логики:
+- форматирование запроса
+- обработка reask (в т.ч. добавление error feedback в messages)
+
+---
+
+### Минимальные синхронные и асинхронные пути
+
+#### Синхронный вызов
+```python
+import instructor
+from pydantic import BaseModel
+
+class User(BaseModel):
+name: str
+age: int
+
+client = instructor.from_provider("openai/gpt-4o-mini")
+
+model = client.create(
+model="gpt-4o-mini",
+messages=[{"role": "user", "content": "{'name': 'Ada', 'age': 37}"}],
+response_model=User,
+max_retries=3,
+strict=True,
+)
+
+raw = model._raw_response
+```
+
+#### Асинхронный вызов
+```python
+import asyncio
+import instructor
+from pydantic import BaseModel
+
+class User(BaseModel):
+name: str
+age: int
+
+async def main():
+aclient = instructor.from_provider("openai/gpt-4o-mini", async_client=True)
+model = await aclient.create(
+model="gpt-4o-mini",
+messages=[{"role": "user", "content": "{\"name\": \"Ada\", \"age\": 37}"}],
+response_model=User,
+max_retries=3,
+strict=True,
+)
+print(model)
+
+asyncio.run(main())
+```
+
+---
+
+### Режимы работы: streaming, partial, parallel
+
+#### `create_iterable`
+- Используется через `client.create_iterable(messages=..., response_model=Model)`
+- Возвращает генератор (sync) или async generator
+- Внутри включает `stream=True`, использует `IterableBase.from_streaming_response(_async)`
+
+```python
+for item in client.create_iterable(messages=..., response_model=MyModel):
+print(item)
+```
+
+#### `create_partial`
+- Используется через `client.create_partial(messages=..., response_model=Model)`
+- Возвращает частично заполненные модели по мере прихода токенов
+- Внутри оборачивает модель как `Partial[Model]`, включает `stream=True`
+
+```python
+for partial in client.create_partial(messages=..., response_model=MyModel):
+# partial содержит поля по мере их поступления
+pass
+```
+
+#### `Mode.PARALLEL_TOOLS`
+- Используется с типами-списками: `response_model=[Model1, Model2]`
+- Выполняет несколько tool calls в одном запросе
+- **Streaming не поддерживается**
+
+```python
+from instructor.mode import Mode
+
+result = client.create(
+model="gpt-4o",
+messages=[{"role": "user", "content": "Извлеки информацию о человеке и событии."}],
+response_model=[PersonInfo, EventInfo],
+mode=Mode.PARALLEL_TOOLS,
+)
+```
+
+---
+
+### Хуки и retry
+
+#### Поддерживаемые события (HookName)
+- `completion:kwargs` — перед вызовом провайдера
+- `completion:response` — после получения ответа
+- `parse:error` — при ошибках валидации/JSON
+- `completion:last_attempt` — перед завершением retry-последовательности
+- `completion:error` — ошибки, не связанные с парсингом
+
+#### Пример использования хуков
+```python
+from instructor.core.hooks import HookName
+
+client.on(HookName.COMPLETION_KWARGS, lambda **kw: print("KWARGS", kw))
+client.on(HookName.PARSE_ERROR, lambda e: print("PARSE", e))
+```
+
+---
+
+### Конвертация multimodal-данных
+
+- Происходит в `processing.multimodal.convert_messages`
+- Автоматическое определение типов (изображения/аудио/PDF)
+- Поддержка:
+- строковых путей
+- URL
+- data URIs
+- Преобразование в provider-ready payload (например, base64 + MIME-type)
+
+---
+
+### Обработка ошибок
+
+| Сценарий | Поведение |
+|---------|-----------|
+| Ошибка валидации / JSON decode | Триггерит reask: добавляется error feedback в `messages`, повторный вызов |
+| Все попытки исчерпаны | Поднимается `InstructorRetryException` с полями: `failed_attempts`, `last_completion`,
+`usage`, `kwargs` |
+
+---
+
+### Расширяемость
+
+- **Новые провайдеры**
+Добавляют:
+- обработчики ответов и reask
+- регистрацию поддерживаемых режимов в dispatcher
+
+- **Повторное использование**
+Большинство JSON/tool-паттернов общие — предпочтительно использовать существующие handlers.
+
+- **Разделение логики**
+Provider-specific код — только в utils провайдера; центральный dispatcher отвечает только за маршрутизацию и
+оркестрацию.

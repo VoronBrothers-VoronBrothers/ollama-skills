@@ -1,0 +1,1722 @@
+## What is Instructor?
+
+**Instructor** — это Python-библиотека для получения **структурированных и предсказуемых данных** из языковых моделей (LLM), таких как GPT-4 и Claude.
+
+- Работает как «форма», которую LLM заполняет по заданной структуре.
+- Обеспечивает валидацию, автоматическое исправление ошибок и стабильный формат вывода.
+
+### Интеграция в приложение
+
+```
+flowchart LR
+    A[Your Application] --> B[Instructor]
+    B --> C[LLM Provider]
+    C --> B
+    B --> A
+```
+
+---
+
+## Проблемы, которые решает Instructor
+
+- **Непредсказуемый вывод**: LLM может менять формат ответа при каждом вызове.
+- **Ошибки формата**: Сложно гарантировать валидность JSON или других структур.
+- **Необходимость ручной валидации**: Требуется проверка соответствия ожидаемому формату.
+
+### Решения от Instructor
+
+- **Определение структуры через Python-классы** (Pydantic).
+- **Гарантированное соответствие формата** на уровне API.
+- **Автоматическая валидация и исправление ошибок**.
+
+---
+
+## Пример использования
+
+```python
+import instructor
+from pydantic import BaseModel
+
+class Person(BaseModel):
+    name: str
+    age: int
+    city: str
+
+client = instructor.from_provider("openai/gpt-4o-mini")
+
+person = client.create(
+    response_model=Person,
+    messages=[
+        {"role": "user", "content": "Extract: John is 30 years old and lives in New York."}
+    ]
+)
+
+print(f"Name: {person.name}")  # John
+print(f"Age: {person.age}")    # 30
+print(f"City: {person.city}")  # New York
+```
+
+---
+
+## Ключевые концепции
+
+### 1. Response Models (Модели ответа)
+
+- Определяют структуру ожидаемого вывода.
+- Реализуются с помощью **Pydantic**.
+- Поддерживают описания полей (`Field(description=...)`), которые помогают LLM точнее извлекать данные.
+
+```python
+from pydantic import BaseModel, Field
+
+class User(BaseModel):
+    name: str = Field(description="The user's full name")
+    age: int = Field(description="The user's age in years")
+```
+
+### 2. Client Setup
+
+- Метод `instructor.from_provider()` подключает Instructor к LLM-провайдеру.
+- Автоматически обрабатывает конфигурацию провайдера.
+
+```python
+client = instructor.from_provider("openai/gpt-4o-mini")
+client = instructor.from_provider("anthropic/claude-3-5-haiku-latest")
+client = instructor.from_provider("google/gemini-3-flash")
+```
+
+### 3. Modes (Режимы)
+
+- Определяют, как Instructor взаимодействует с LLM для получения структурированного вывода.
+- Разные провайдеры поддерживают разные режимы.
+- Режим выбирается автоматически, но может быть задан вручную.
+
+---
+
+## Типичные сценарии использования
+
+- **Data extraction**: Извлечение структурированной информации из текста.
+- **Form filling**: Преобразование свободного текста в поля формы.
+- **Classification**: Классификация контента по заданным категориям.
+- **Content generation**: Генерация структурированного контента (статьи, описания товаров).
+- **API integration**: Приведение вывода LLM к формату, требуемому API.
+
+---
+
+## Часто задаваемые вопросы
+
+### Нужно ли знать Pydantic?
+- Не обязательно. Базовые шаблоны (как в примере) достаточны для старта.
+- Дополнительные возможности Pydantic можно освоить по мере необходимости.
+
+### Какой LLM-провайдер выбрать?
+- **OpenAI** — рекомендуется для новичков (надёжность и широкая поддержка).
+- Другие варианты: **Anthropic Claude**, **Google Gemini**, open-source модели.
+
+### Сложно ли освоить Instructor?
+- Нет. Если вы знакомы с Python-классами и API, освоение будет простым.
+- Основные концепции минималистичны.
+
+### Как Instructor отличается от других библиотек?
+- Сфокусирован исключительно на **структурированном выводе**.
+- Имеет простой и чистый API.
+- Не пытается быть универсальным фреймворком.
+
+---
+
+
+
+[Ключевые слова]: Instructor, LLM, structured outputs, Pydantic, OpenAI, Anthropic, Google Gemini, client.from_provider, response_model, validation, modes, data extraction, form filling, classification, API integration
+## Getting Started with Instructor
+
+**Instructor** — библиотека для извлечения структурированных данных из языковых моделей (LLM) с использованием Pydantic-моделей.
+
+### Основные возможности
+- Установка и настройка Instructor
+- Извлечение базовой структурированной информации
+- Обработка валидации и ошибок
+- Работа со стриминговыми ответами
+- Поддержка различных LLM-провайдеров
+
+---
+
+## Установка
+
+```bash
+pip install instructor
+```
+
+Для подключения конкретных провайдеров используются **extras**:
+
+```bash
+# OpenAI (входит по умолчанию)
+pip install instructor
+
+# Anthropic
+pip install "instructor[anthropic]"
+
+# Google / Gemini
+pip install "instructor[google-genai]"
+
+# Vertex AI
+pip install "instructor[vertexai]"
+
+# Cohere
+pip install "instructor[cohere]"
+
+# LiteLLM (множество провайдеров)
+pip install "instructor[litellm]"
+
+# Mistral AI
+pip install "instructor[mistralai]"
+
+# xAI
+pip install "instructor[xai]"
+```
+
+> **Важно**: основная установка содержит только обязательные зависимости. SDK провайдеров подключаются явно.
+
+---
+
+## Настройка окружения
+
+Установите API-ключи как переменные окружения:
+
+```bash
+export OPENAI_API_KEY=your_openai_api_key
+export ANTHROPIC_API_KEY=your_anthropic_api_key
+# и другие в зависимости от провайдера
+```
+
+---
+
+## Первый структурированный вывод
+
+### Базовый пример (OpenAI)
+
+```python
+import instructor
+from pydantic import BaseModel
+
+class UserInfo(BaseModel):
+    name: str
+    age: int
+
+client = instructor.from_provider("openai/gpt-5-nano")
+
+user_info = client.create(
+    response_model=UserInfo,
+    messages=[
+        {"role": "user", "content": "John Doe is 30 years old."}
+    ],
+)
+
+print(f"Name: {user_info.name}, Age: {user_info.age}")
+# Output: Name: John Doe, Age: 30
+```
+
+**Основные этапы**:
+- Определение Pydantic-модели (`BaseModel`)
+- Создание клиента через `instructor.from_provider()`
+- Вызов `client.create(..., response_model=...)`
+
+---
+
+## Валидация и обработка ошибок
+
+Используется валидация Pydantic. При несоответствии — автоматический повторный запрос (retry) с обратной связью.
+
+```python
+from pydantic import BaseModel, Field, field_validator
+
+class User(BaseModel):
+    name: str
+    age: int = Field(gt=0, lt=120)
+
+    @field_validator('name')
+    def name_must_have_space(cls, v):
+        if ' ' not in v:
+            raise ValueError('Name must include first and last name')
+        return v
+
+user = client.create(
+    response_model=User,
+    messages=[
+        {"role": "user", "content": "Extract: Tom is 25 years old."}
+    ],
+)
+```
+
+> **Важно**: `Field(...)` и `@field_validator` позволяют задавать ограничения и кастомные правила.
+
+---
+
+## Работа со сложными моделями (вложенные структуры)
+
+```python
+from pydantic import BaseModel
+from typing import List
+
+class Address(BaseModel):
+    street: str
+    city: str
+    state: str
+    zip_code: str
+
+class Person(BaseModel):
+    name: str
+    age: int
+    addresses: List[Address]
+
+person = client.create(
+    response_model=Person,
+    messages=[
+        {"role": "user", "content": """
+        Extract: John Smith is 35 years old.
+        He has homes at 123 Main St, Springfield, IL 62704 and
+        456 Oak Ave, Chicago, IL 60601.
+        """}
+    ],
+)
+```
+
+---
+
+## Стриминг ответов
+
+Для частичной генерации и улучшения UX:
+
+```python
+from instructor import Partial
+
+stream = client.create_partial(
+    response_model=Person,
+    messages=[
+        {"role": "user", "content": "Extract a detailed person profile for John Smith, 35, who lives in Chicago and Springfield."}
+    ],
+)
+
+for partial in stream:
+    print(partial)
+```
+
+---
+
+## Использование других провайдеров
+
+### Пример: Anthropic
+
+```python
+import instructor
+from pydantic import BaseModel
+
+class UserInfo(BaseModel):
+    name: str
+    age: int
+
+client = instructor.from_provider("anthropic/claude-3-opus-20240229")
+
+user_info = client.create(
+    response_model=UserInfo,
+    messages=[
+        {"role": "user", "content": "John Doe is 30 years old."}
+    ],
+)
+```
+
+> Поддерживаемые провайдеры: OpenAI, Anthropic, Google (Gemini), Vertex AI, Cohere, Mistral, xAI, LiteLLM.
+
+---
+
+## Часто задаваемые вопросы (FAQ)
+
+- **Start Here vs Getting Started**:
+  - *Start Here* — концептуальное введение
+  - *Getting Started* — практическое руководство
+
+- **Рекомендуемый старт**: OpenAI (надежность и поддержка)
+
+- **Знание Pydantic**: не обязательно на старте, достаточно простых моделей
+
+- **Асинхронная работа**:
+  ```python
+  client = instructor.from_provider("openai/gpt-4o", async_client=True)
+  # затем: await client.create(...)
+  ```
+
+- **Повторы при валидации**: автоматические, настраивается через `max_retries`
+
+---
+
+
+
+## Ключевые слова:
+instructor, structured output, Pydantic, LLM, OpenAI, Anthropic, Google Gemini, Vertex AI, Cohere, Mistral, xAI, LiteLLM, from_provider, response_model, validation, streaming, async, retry mechanism
+## Установка библиотеки `instructor`
+
+Для установки выполните команду:
+
+```bash
+pip install instructor
+```
+
+### Зависимости
+
+Библиотека `instructor` требует следующих пакетов:
+
+- **`openai`** — официальный Python-клиент OpenAI API
+- **`typer`** — фреймворк для создания CLI-приложений на основе аннотаций типов Python
+- **`docstring-parser`** — парсер docstrings, преобразует их в структурированные данные (например, JSON Schema)
+- **`pydantic`** — библиотека для валидации данных и управления настройками с использованием аннотаций типов
+
+### Требования к среде
+
+- Python ≥ 3.9
+- `pip` (менеджер пакетов Python)
+
+Если эти условия выполнены — установка проходит без дополнительных действий.
+
+---
+
+[Ключевые слова]: instructor, openai, pydantic, typer, docstring-parser, pip install, Python 3.9+, CLI, JSON
+Schema, data validation
+## Почему стоит использовать `instructor`?
+
+### Проблема: ненадёжные неструктурированные ответы от LLM
+
+Без `instructor` вы получаете **текст**, а не структурированные данные:
+
+```python
+# Что вы хотите:
+user_info = extract_user("John is 25 years old")
+print(user_info.name)  # "John"
+print(user_info.age)   # 25
+
+# Что вы получаете на практике:
+response = llm.complete("Extract: John is 25 years old")
+# "I'd be happy to help! Based on the text, the user's name is John
+# and their age is 25. Is there anything else you'd like me to extract?"
+
+# Теперь нужно:
+# 1. Парсить текст вручную
+# 2. Обрабатывать синтаксические ошибки JSON
+# 3. Валидировать данные
+# 4. Повторять запрос при ошибках (а они будут)
+# 5. Писать отдельный код под каждый API провайдера
+```
+
+### Решение: `instructor` + Pydantic
+
+```python
+import instructor
+from pydantic import BaseModel
+
+class User(BaseModel):
+name: str
+age: int
+
+client = instructor.from_provider("openai/gpt-4o-mini")
+user = client.create(
+response_model=User,
+messages=[{"role": "user", "content": "John is 25 years old"}],
+)
+
+print(user.name)  # "John"
+print(user.age)   # 25
+```
+
+✅ Без парсинга
+✅ Без ручных retry-логик
+✅ Без провайдерозависимого кода
+
+---
+
+## Ключевые задачи, которые решает `instructor`
+
+### 1. Надёжность: автоматические повторы при валидации
+
+```python
+# Без instructor — хрупкий код:
+try:
+data = json.loads(llm_response)
+user = User(**data)  # KeyError: 'name'
+except Exception as e:
+# Что делать? Retry? Парсить текст?
+pass
+
+# С instructor — надёжно:
+user = client.create(
+response_model=User,
+messages=[{"role": "user", "content": "..."}],
+max_retries=3,  # Автоматические повторы при ошибках валидации
+)
+# Возвращает валидный `User` или выбрасывает исключение
+```
+
+### 2. Унификация API: один интерфейс для всех провайдеров
+
+```python
+# OpenAI:
+client = instructor.from_provider("openai/gpt-4o-mini")
+
+# Anthropic:
+client = instructor.from_provider("anthropic/claude-3")
+
+# Google:
+client = instructor.from_provider("google/gemini-pro")
+
+# Одинаковый вызов:
+user = client.create(
+response_model=User,
+messages=[{"role": "user", "content": "..."}],
+)
+```
+
+### 3. Сложные структуры данных — как в Python
+
+```python
+from typing import List
+
+class Address(BaseModel):
+street: str
+city: str
+
+class User(BaseModel):
+name: str
+addresses: List[Address]
+
+class UserList(BaseModel):
+users: List[User]
+
+result = client.create(
+response_model=UserList,
+messages=[{"role": "user", "content": "..."}],
+)
+```
+
+---
+
+## Реальные последствия без `instructor`
+
+| Категория | Потери |
+|----------|--------|
+| **Время** | 2–3 ч на парсинг/валидацию<br>4–6 ч на отладку edge cases<br>2–3 ч на интеграцию нового провайдера |
+| **Баги в продакшене** | Crashes из-за malformed JSON<br>Скрытые ошибки при отсутствии полей<br>Несоответствие
+типов → повреждение БД |
+| **Разработчики** | «Работало же в тестах!»<br>«Почему JSON другой?»<br>«Как обрабатывать строку вместо числа?» |
+
+---
+
+## Отзывы разработчиков
+
+- ✅ *«Сократили LLM-код на 80%»*
+- ✅ *«Наконец-то могу доверять ответам LLM»*
+- ✅ *«Retry-логика уже окупила установку»*
+- ✅ *«Работает одинаково у всех провайдеров — больше нет vendor lock-in»*
+
+---
+
+## Когда `instructor` не нужен?
+
+- Вам нужны **сырые текстовые ответы** (чат-боты, генерация текста)
+- Вы пишете одноразовый скрипт без обработки ошибок
+- Вам нравится отлаживать JSON в 3 ночи
+
+---
+
+## Начало работы (30 секунд)
+
+```bash
+pip install instructor
+```
+
+```python
+import instructor
+from pydantic import BaseModel
+
+client = instructor.from_provider("openai/gpt-4o-mini")
+
+class User(BaseModel):
+name: str
+age: int
+
+user = client.create(
+response_model=User,
+messages=[{"role": "user", "content": "John is 25 years old"}],
+)
+
+print(user)  # User(name='John', age=25)
+```
+
+---
+
+[Ключевые слова]: instructor, LLM, pydantic, structured output, JSON validation, automatic retries, provider
+abstraction, OpenAI, Anthropic, Google Gemini, API unification, data modeling, error handling, type safety
+## Архитектура библиотеки `instructor`
+
+### Основной поток выполнения (High-Level Flow)
+
+```mermaid
+sequenceDiagram
+autonumber
+participant U as User Code
+participant I as Instructor (patched)
+participant R as Retry Layer (tenacity)
+participant C as Provider Client
+participant D as Dispatcher (process_response)
+participant H as Provider Handler (response/reask)
+participant M as Pydantic Model
+
+U->>I: chat.completions.create(response_model=..., **kwargs)
+Note right of I: patch() оборачивает create() кэшированием, шаблонизацией, retry и хуками
+I->>R: retry_sync/async(func=create, max_retries, strict, mode, hooks)
+loop attempts
+R->>C: create(**prepared_kwargs)
+C-->>R: raw response (provider-specific)
+R->>D: process_response(_async)(response, response_model, mode, stream)
+alt Streaming/Partial
+D->>M: Iterable/Partial.from_streaming_response(_async)
+D-->>R: Iterable/Partial model (или список элементов)
+else Standard
+D->>H: provider mode handler (format/parse selection)
+H-->>D: adjusted response_model/new_kwargs при необходимости
+D->>M: response_model.from_response(...)
+M-->>D: parsed model (с _raw_response)
+D-->>R: model (или адаптированный простой тип)
+end
+R-->>I: parsed model
+end
+I-->>U: final model (+ _raw_response на экземпляре)
+
+rect rgb(255,240,240)
+Note over R,H: При ошибках валидации/JSON → путь reask
+R->>H: handle_reask_kwargs(..., exception, failed_attempts)
+H-->>R: новые kwargs/messages для следующей попытки
+end
+```
+
+#### Ключевые компоненты и их ответственность
+
+- **`patch()`**
+Оборачивает `create()` провайдера, добавляя:
+- кэширование (lookup/save)
+- шаблонизацию (`prompt_template`)
+- строгий режим (`strict`)
+- хуки (`hooks`)
+- retry-логику
+
+- **Retry Layer**
+Выполняет вызов провайдера, управляет:
+- повторами при ошибках валидации/JSON
+- хуками (emit/update)
+- подсчётом usage
+- подготовкой `reask`-запросов
+
+- **Dispatcher**
+Выбирает путь парсинга по `Mode`, обрабатывает:
+- multimodal message conversion
+- привязку `_raw_response`
+- потоковый/частичный вывод
+
+- **Provider Handlers**
+Реализуют специфичные для провайдера логики:
+- форматирование запроса
+- обработка reask (в т.ч. добавление error feedback в messages)
+
+---
+
+### Минимальные синхронные и асинхронные пути
+
+#### Синхронный вызов
+```python
+import instructor
+from pydantic import BaseModel
+
+class User(BaseModel):
+name: str
+age: int
+
+client = instructor.from_provider("openai/gpt-4o-mini")
+
+model = client.create(
+model="gpt-4o-mini",
+messages=[{"role": "user", "content": "{'name': 'Ada', 'age': 37}"}],
+response_model=User,
+max_retries=3,
+strict=True,
+)
+
+raw = model._raw_response
+```
+
+#### Асинхронный вызов
+```python
+import asyncio
+import instructor
+from pydantic import BaseModel
+
+class User(BaseModel):
+name: str
+age: int
+
+async def main():
+aclient = instructor.from_provider("openai/gpt-4o-mini", async_client=True)
+model = await aclient.create(
+model="gpt-4o-mini",
+messages=[{"role": "user", "content": "{\"name\": \"Ada\", \"age\": 37}"}],
+response_model=User,
+max_retries=3,
+strict=True,
+)
+print(model)
+
+asyncio.run(main())
+```
+
+---
+
+### Режимы работы: streaming, partial, parallel
+
+#### `create_iterable`
+- Используется через `client.create_iterable(messages=..., response_model=Model)`
+- Возвращает генератор (sync) или async generator
+- Внутри включает `stream=True`, использует `IterableBase.from_streaming_response(_async)`
+
+```python
+for item in client.create_iterable(messages=..., response_model=MyModel):
+print(item)
+```
+
+#### `create_partial`
+- Используется через `client.create_partial(messages=..., response_model=Model)`
+- Возвращает частично заполненные модели по мере прихода токенов
+- Внутри оборачивает модель как `Partial[Model]`, включает `stream=True`
+
+```python
+for partial in client.create_partial(messages=..., response_model=MyModel):
+# partial содержит поля по мере их поступления
+pass
+```
+
+#### `Mode.PARALLEL_TOOLS`
+- Используется с типами-списками: `response_model=[Model1, Model2]`
+- Выполняет несколько tool calls в одном запросе
+- **Streaming не поддерживается**
+
+```python
+from instructor.mode import Mode
+
+result = client.create(
+model="gpt-4o",
+messages=[{"role": "user", "content": "Извлеки информацию о человеке и событии."}],
+response_model=[PersonInfo, EventInfo],
+mode=Mode.PARALLEL_TOOLS,
+)
+```
+
+---
+
+### Хуки и retry
+
+#### Поддерживаемые события (HookName)
+- `completion:kwargs` — перед вызовом провайдера
+- `completion:response` — после получения ответа
+- `parse:error` — при ошибках валидации/JSON
+- `completion:last_attempt` — перед завершением retry-последовательности
+- `completion:error` — ошибки, не связанные с парсингом
+
+#### Пример использования хуков
+```python
+from instructor.core.hooks import HookName
+
+client.on(HookName.COMPLETION_KWARGS, lambda **kw: print("KWARGS", kw))
+client.on(HookName.PARSE_ERROR, lambda e: print("PARSE", e))
+```
+
+---
+
+### Конвертация multimodal-данных
+
+- Происходит в `processing.multimodal.convert_messages`
+- Автоматическое определение типов (изображения/аудио/PDF)
+- Поддержка:
+- строковых путей
+- URL
+- data URIs
+- Преобразование в provider-ready payload (например, base64 + MIME-type)
+
+---
+
+### Обработка ошибок
+
+| Сценарий | Поведение |
+|---------|-----------|
+| Ошибка валидации / JSON decode | Триггерит reask: добавляется error feedback в `messages`, повторный вызов |
+| Все попытки исчерпаны | Поднимается `InstructorRetryException` с полями: `failed_attempts`, `last_completion`,
+`usage`, `kwargs` |
+
+---
+
+### Расширяемость
+
+- **Новые провайдеры**
+Добавляют:
+- обработчики ответов и reask
+- регистрацию поддерживаемых режимов в dispatcher
+
+- **Повторное использование**
+Большинство JSON/tool-паттернов общие — предпочтительно использовать существующие handlers.
+
+- **Разделение логики**
+Provider-specific код — только в utils провайдера; центральный dispatcher отвечает только за маршрутизацию и
+оркестрацию.
+## Отладка приложений с Instructor
+
+### Включение логов
+
+#### Быстрый режим отладки (рекомендуется)
+- Установите переменную окружения:
+```bash
+export INSTRUCTOR_DEBUG=1
+# или inline:
+INSTRUCTOR_DEBUG=1 python your_script.py
+```
+- Автоматически включает `DEBUG`-логи с correlation IDs (формат: `[a1b2c3d4]`)
+
+#### Ручная настройка логирования
+```python
+import logging
+
+logging.basicConfig(level=logging.DEBUG)
+logging.getLogger("instructor").setLevel(logging.DEBUG)
+```
+
+**Что логируется:**
+- Сырые ответы от провайдера (объекты provider-specific)
+- Выбор handler’а и режима (`mode`)
+- Попытки retry и ошибки парсинга
+- Корректировка `messages` при reask
+- Correlation ID для трассировки
+
+> **Совет:** Настройте форматтер с timestamp и именем модуля.
+
+---
+
+### Отслеживание потока выполнения через хуки
+
+Хуки позволяют вмешиваться в ключевые этапы без изменения ядра:
+
+```python
+from instructor.core.hooks import HookName
+
+client.on(HookName.COMPLETION_KWARGS, lambda **kw: print("KWARGS:", kw))
+client.on(HookName.COMPLETION_RESPONSE, lambda resp: print("RESPONSE:", type(resp)))
+client.on(HookName.PARSE_ERROR, lambda e: print("PARSE ERROR:", e))
+client.on(HookName.COMPLETION_LAST_ATTEMPT, lambda e: print("LAST ATTEMPT:", e))
+client.on(HookName.COMPLETION_ERROR, lambda e: print("COMPLETION ERROR:", e))
+```
+
+**Типичные сценарии использования:**
+- Запись `kwargs`, передаваемых провайдеру (включая mode/tools/response_format)
+- Сохранение сырых ответов для оффлайн-анализа
+- Анализ ошибок парсинга и изменений в `messages` при reask
+
+> **Важно:** Хукам, принимающим `**kwargs`, передаётся метаданный словарь `_instructor_meta` с полями:
+> - `attempt_number`
+> - `correlation_id`
+> - `mode`
+> - `response_model_name`
+
+Пример:
+```python
+client.on(HookName.COMPLETION_KWARGS, lambda **kw: print(kw.get("_instructor_meta")))
+```
+
+---
+
+### Анализ сырых ответов
+
+Парсинг возвращает модели с исходным ответом провайдера:
+
+```python
+model = client.create(...)
+raw = getattr(model, "_raw_response", None)
+print(raw)
+```
+
+**Для чего полезно:**
+- Проверка токен-использования (usage)
+- Версии модели и provider-specific метаданных
+
+---
+
+### Обработка ошибок и retry
+
+При исчерпании всех попыток вызывается `InstructorRetryException`:
+
+```python
+from instructor.core.exceptions import InstructorRetryException
+
+try:
+client.create(...)
+except InstructorRetryException as e:
+print("Attempts:", e.n_attempts)
+print("Last completion:", e.last_completion)
+print("Create kwargs:", e.create_kwargs)  # воспроизводимый ввод
+print("Failed attempts:", e.failed_attempts)  # [(attempt, exc, completion), ...]
+if hasattr(e, "trace_packet") and e.trace_packet:
+print("Trace packet:", e.trace_packet)
+```
+
+**Для мини-воспроизведения ошибки:**
+```python
+create_kwargs = {
+# вставить из e.create_kwargs
+}
+client.create(response_model=MyModel, **create_kwargs)
+```
+
+---
+
+### Строгий vs нестрогий парсинг
+
+| Параметр | Поведение |
+|---------|-----------|
+| `strict=True` | Требует точного соответствия схеме; выявляет расхождения на ранней стадии |
+| `strict=False` | Пропускает лишние поля, допускает нестрогие типы (например, `float` вместо `int`) |
+
+Пример:
+```python
+client.create(..., response_model=MyModel, strict=True)
+```
+
+---
+
+### Настройка retry-поведения
+
+Можно передать либо целое число (макс. попыток), либо объект `tenacity.Retrying`:
+
+```python
+from tenacity import Retrying, stop_after_attempt, stop_after_delay
+
+max_retries = Retrying(stop=stop_after_attempt(3) | stop_after_delay(10))
+client.create(..., max_retries=max_retries)
+```
+
+**Применение:** баланс между надёжностью и задержкой.
+
+---
+
+### Конвертация multimodal-сообщений
+
+При отправке изображений/аудио/PDF:
+- Автоматически вызывается `processing.multimodal.convert_messages`
+- Для отладки логируйте `messages` до и после конвертации через хуки
+- Убедитесь, что URI/типы медиа корректны
+
+---
+
+### Работа с кэшированием
+
+**Особенности:**
+- Успешные парсинг-результаты сохраняются в кэш; повторный вызов пропускает провайдер
+- Для отладки поведения провайдера — отключите кэш:
+```python
+client.create(..., cache=None)
+```
+
+---
+
+### Распространённые советы по устранению неполадок
+
+- Проверьте `response_model.model_json_schema()` на соответствие ожидаемому выводу провайдера.
+- Убедитесь, что `mode` поддерживается провайдером (несоответствие → ошибки парсинга).
+- Проверьте лимиты провайдера (макс. токены/длина ответа); неполные ответы вызывают специфичные исключения.
+- При использовании `MD_JSON` — убедитесь, что провайдер возвращает блок ```json.
+
+> **Для глубокой отладки:** добавьте хук, записывающий kwargs/responses/errors на диск с timestamp и correlation_id.
+
+---
+
+### Пример: локальная отладка без сети
+
+**Файл:** `examples/debugging/run.py`
+**Запуск:**
+```bash
+python examples/debugging/run.py
+```
+
+**Что делает скрипт:**
+- Включает DEBUG-логи для `instructor.*`
+- Патчит фейковый `create` с `mode=Mode.JSON`
+- Подключает хуки на вывод kwargs, типов ответа и ошибок парсинга
+- Парсит JSON в Pydantic-модель и печатает результат
+```
+## Структура репозитория Instructor
+
+Репозиторий содержит основные компоненты библиотеки, инструментов и документации для работы с структурированными
+выходными данными (structured outputs) через API-клиенты.
+
+### Основные директории
+
+- **`instructor/`**
+Ядро библиотеки: содержит клиентские классы, адаптеры и вспомогательные утилиты для интеграции с LLM и генерации
+структурированных данных.
+
+- **`cli/`**
+Реализация командной строки (CLI), используемой для:
+- Управления заданиями (job management)
+- Отслеживания использования (usage tracking)
+
+- **`docs/`**
+Исходные файлы документации, собираемые с помощью MkDocs. Содержит руководства, API-справочники и примеры.
+
+- **`examples/`**
+Практические примеры и «кулинарные книги» (cookbooks), демонстрирующие реальное использование библиотеки в
+различных сценариях.
+
+- **`tests/`**
+Набор тестов и скрипты оценки, обеспечивающие корректность работы библиотеки:
+- Unit-тесты
+- Интеграционные тесты
+- Скрипты для метрик и валидации
+
+## Ключевые слова:
+instructor, structured outputs, LLM, API client, CLI, MkDocs, unit tests, integration tests, cookbooks, adapters
+## Инструкция по сравнению режимов Instructor
+
+### Общие положения
+
+- Instructor использует **ядерные (core) режимы**, которые работают кросспровайдерно.
+- Режимы, специфичные для провайдера, поддерживаются, но объявлены устаревшими и вызывают предупреждения.
+- Логика обработки режимов перенесена в обработчики провайдеров; DSL больше не хранит логику потоковой передачи
+(streaming), зависящую от режима.
+
+---
+
+### Ядерные режимы
+
+- **`TOOLS`** — вызов инструментов/функций для структурированного извлечения данных.
+- **`JSON_SCHEMA`** — нативная поддержка схемы, если провайдер её поддерживает.
+- **`MD_JSON`** — извлечение JSON из текста или кодовых блоков; используется как резервный или для простых случаев.
+- **`PARALLEL_TOOLS`** — параллельные вызовы нескольких инструментов в одном ответе.
+- **`RESPONSES_TOOLS`** — инструменты API OpenAI Responses.
+
+---
+
+### Устаревшие режимы (deprecated)
+
+Устаревшие режимы маппятся на ядерные:
+
+| Устаревший режим | → | Ядерный режим |
+|------------------|----|---------------|
+| `FUNCTIONS`      | → | `TOOLS`       |
+| `TOOLS_STRICT`   | → | `TOOLS`       |
+| `ANTHROPIC_TOOLS`| → | `TOOLS`       |
+| `ANTHROPIC_JSON` | → | `MD_JSON`     |
+| `GENAI_TOOLS`    | → | `TOOLS`       |
+| `GENAI_JSON`     | → | `JSON_SCHEMA` *(примечание: в документе указано как `JSON`, но маппинг на ядерный режим —
+`JSON_SCHEMA`)* |
+| `MISTRAL_TOOLS`  | → | `TOOLS`       |
+| `MISTRAL_STRUCTURED_OUTPUTS` | → | `JSON_SCHEMA` |
+| `BEDROCK_TOOLS`  | → | `TOOLS`       |
+| `BEDROCK_JSON`   | → | `MD_JSON`     |
+| `FIREWORKS_TOOLS`| → | `TOOLS`       |
+| `FIREWORKS_JSON` | → | `MD_JSON`     |
+| `CEREBRAS_TOOLS` | → | `TOOLS`       |
+| `CEREBRAS_JSON`  | → | `MD_JSON`     |
+| `WRITER_TOOLS`   | → | `TOOLS`       |
+| `WRITER_JSON`    | → | `MD_JSON`     |
+| `PERPLEXITY_JSON`| → | `MD_JSON`     |
+| `VERTEXAI_TOOLS` | → | `TOOLS`       |
+| `VERTEXAI_JSON`  | → | `MD_JSON`     |
+| `VERTEXAI_PARALLEL_TOOLS` | → | `PARALLEL_TOOLS` |
+
+> ⚠ Устаревшие режимы следует использовать только для обратной совместимости.
+
+---
+
+### Рекомендации по выбору режима
+
+- **`TOOLS`** — рекомендуется для большинства случаев структурированного вывода.
+- **`JSON_SCHEMA`** — при наличии нативной поддержки схемы провайдером (например, OpenAI, Mistral).
+- **`MD_JSON`** — если инструменты не поддерживаются или требуется простой fallback.
+- **`PARALLEL_TOOLS`** — для одновременного выполнения нескольких задач в одном запросе.
+
+---
+
+### Примеры использования
+
+#### TOOLS (рекомендуемый)
+
+```python
+import instructor
+from instructor import Mode
+
+client = instructor.from_provider(
+"openai/gpt-4o-mini",
+mode=Mode.TOOLS,
+)
+```
+
+#### MD_JSON (резервный/упрощённый)
+
+```python
+import instructor
+from instructor import Mode
+
+client = instructor.from_provider(
+"bedrock/anthropic.claude-3-5-sonnet-20241022-v2:0",
+mode=Mode.MD_JSON,
+)
+```
+
+#### JSON_SCHEMA (нативная схема)
+
+```python
+import instructor
+from instructor import Mode
+
+client = instructor.from_provider(
+"openai/gpt-4o-mini",
+mode=Mode.JSON_SCHEMA,
+)
+```
+
+#### Google / Gemini
+
+Для сложных структур:
+
+```python
+import instructor
+
+client = instructor.from_provider(
+"google/gemini-2.5-flash",
+mode=instructor.Mode.TOOLS,
+)
+```
+
+Для структурированного JSON-вывода:
+
+```python
+import instructor
+
+client = instructor.from_provider(
+"google/gemini-2.5-flash",
+mode=instructor.Mode.JSON,  # примечание: в документе указан как `JSON`, не `MD_JSON`
+)
+```
+
+---
+
+### Совместимость режимов по провайдерам
+
+| Провайдер     | Режимы (устаревшие / ядерные) |
+|---------------|-------------------------------|
+| **OpenAI**    | `TOOLS`, `TOOLS_STRICT`, `PARALLEL_TOOLS`, `FUNCTIONS`; `JSON`, `MD_JSON`, `JSON_O1` |
+| **Anthropic** | `ANTHROPIC_TOOLS`, `ANTHROPIC_PARALLEL_TOOLS`; `ANTHROPIC_JSON` |
+| **Gemini**    | `TOOLS`; `JSON` *(не `MD_JSON`)* |
+| **Vertex AI** | `VERTEXAI_TOOLS`; `VERTEXAI_JSON` |
+| **Cohere**    | `COHERE_TOOLS`; `JSON`, `MD_JSON` |
+| **Mistral**   | `MISTRAL_TOOLS`; `MISTRAL_STRUCTURED_OUTPUTS` |
+| **Anyscale**  | —; `JSON`, `MD_JSON`, `JSON_SCHEMA` |
+| **Databricks**| `TOOLS`; `JSON`, `MD_JSON` |
+| **Together**  | —; `JSON`, `MD_JSON` |
+| **Fireworks** | `FIREWORKS_TOOLS`; `FIREWORKS_JSON` |
+| **Cerebras**  | —; `CEREBRAS_JSON` |
+| **Writer**    | `WRITER_TOOLS`; `JSON` *(не `MD_JSON`)* |
+| **Perplexity**| —; `PERPLEXITY_JSON` |
+| **GenAI**     | `TOOLS`; `JSON` |
+| **LiteLLM**   | Зависит от провайдера (как для tool-based, так и JSON-режимов) |
+
+---
+
+### Лучшие практики
+
+1. **Начинайте с рекомендуемого режима для вашего провайдера**
+- OpenAI: `TOOLS`
+- Anthropic: `ANTHROPIC_TOOLS` (Claude 3+) или `ANTHROPIC_JSON`
+- Gemini: `TOOLS` или `JSON`
+
+2. **Используйте JSON-режимы при простых структурах или проблемах**
+- Проще реализуются
+- Могут быть более токенноэффективными
+- Работают с большим числом моделей
+
+3. **Применяйте провайдер-специфичные режимы при наличии**
+- Оптимизированы под особенности конкретного API
+- Лучше обрабатывают специфические требования (например, строгая валидация)
+
+4. **Тестируйте и валидируйте**
+- Производительность может отличаться в зависимости от задачи
+- Всегда тестируйте на реальных данных и моделях
+
+---
+
+[Ключевые слова]: Instructor, режимы, mode comparison, TOOLS, JSON_SCHEMA, MD_JSON, PARALLEL_TOOLS, RESPONSES_TOOLS,
+legacy modes, deprecated modes, structured output, tool calling, OpenAI, Anthropic, Gemini, Vertex AI, Mistral,
+Bedrock, Fireworks, Cerebras, Writer, Perplexity, GenAI, LiteLLM
+## Основные принципы философии Instructor
+
+- **Простота превосходит сложность**: инструмент должен упрощать
+сложное, не усложняя простое.
+- **Опора на знакомые технологии**: использует Pydantic как основу —
+никаких новых абстракций.
+- **Полный контроль над кодом**: «выход» всегда открыт; можно
+использовать raw API без фреймворка.
+- **Прозрачность**: видно, что именно отправляется в LLM и какие
+ответы приходят.
+- **Композиция вместо конфигурации**: строится через функции, а не
+YAML/декораторы/магию.
+- **Эволюционное развитие кода**: можно начинать с простого и
+постепенно добавлять валидацию, retry, streaming и т.д.
+
+---
+
+## Ключевые принципы
+
+### 1. Начинайте с того, что знают разработчики
+- Instructor **не изобретает** новых абстракций.
+- Основа — `pydantic.BaseModel`.
+- Пример:
+
+```python
+import instructor
+from pydantic import BaseModel
+
+class User(BaseModel):
+name: str
+age: int
+
+client = instructor.from_provider("openai/gpt-4.1-mini")
+_user = client.create(
+response_model=User,
+messages=[{"role": "user", "content": "Jane is 33"}],
+)
+```
+
+### 2. «Выход» всегда доступен
+- Instructor **не упаковывает**, а **патчит** существующие клиенты.
+- Можно переключиться на raw API в одну строку:
+
+```python
+# Без response_model — raw вызов
+client = instructor.from_provider("openai/gpt-4.1-mini")
+_result = client.create(messages=[{"role": "user", "content": "Say
+hello"}])
+
+# Или напрямую через OpenAI SDK
+from openai import OpenAI
+_raw_client = OpenAI()
+```
+
+### 3. Прозрачность вместо сокрытия
+- Можно получить сырую ответную часть от LLM:
+
+```python
+_raw_response = result._raw_response
+```
+
+- Поддержка логирования через `logfire`:
+
+```python
+instructor.logfire.configure()
+```
+
+### 4. Композиция вместо конфигурации
+- Нет YAML, декораторов или магии.
+- Пример композиции:
+
+```python
+class User(BaseModel):
+name: str
+age: int
+
+class Company(BaseModel):
+name: str
+industry: str
+
+class Analysis(BaseModel):
+user: User
+company: Company
+
+def extract_user(text: str) -> User:
+return client.create(response_model=User, messages=[{"role":
+"user", "content": text}])
+
+def extract_company(text: str) -> Company:
+return client.create(response_model=Company, messages=[{"role":
+"user", "content": text}])
+
+def analyze_email(email: str) -> Analysis:
+user = extract_user(email)
+company = extract_company(email)
+return Analysis(user=user, company=company)
+```
+
+### 5. Рост от простого к сложному
+- Без рефакторинга можно добавлять функционал:
+
+```python
+# День 1: базовый вызов
+_user = client.create(response_model=User, messages=[...])
+
+# День 7: валидация
+class User(BaseModel):
+name: str
+age: int
+
+@field_validator("age")
+def check_age(cls, value: int) -> int:
+if value < 0 or value > 150:
+raise ValueError("Invalid age")
+return value
+
+# День 14: retry
+_user = client.create(response_model=User, messages=[...],
+max_retries=3)
+
+# День 30: стриминг
+from instructor import Partial
+
+for partial in client.create(
+response_model=Partial[User],
+messages=[...],
+stream=True,
+):
+update_ui(partial)
+```
+
+---
+
+## Что Instructor **намеренно не делает**
+
+### ❌ Нет автоматической генерации промптов
+- Вы сами пишете системные и пользовательские сообщения:
+
+```python
+_messages = [
+{"role": "system", "content": "You are a precise data extractor"},
+{"role": "user", "content": f"Extract user from: {text}"},
+]
+```
+
+### ❌ Нет новых абстракций вроде «Agents», «Chains»
+- Вы используете свои доменные концепции:
+
+```python
+def search_web(query: str) -> str:
+return f"Results for {query}"
+
+def extract_user_with_search(query: str) -> User:
+search_results = search_web(query)
+return client.create(
+response_model=User,
+messages=[{"role": "user", "content": search_results}]
+)
+```
+
+### ❌ Нет vendor lock-in
+- Модели и логика — ваши, Instructor только подключает к LLM:
+
+```python
+def process_user(user: User) -> dict:
+return {"name": user.name.upper(), "adult": user.age >= 18}
+
+user = client.create(response_model=User, messages=[...])
+_result = process_user(user)  # Работает без Instructor
+```
+
+---
+
+## Итоговые преимущества
+
+- **Минимальный API**: освоение за минуты.
+- **Отсутствие привязки к провайдеру**: можно менять LLM или убрать
+библиотеку.
+- **Дебаггабельность**: видно, что происходит внутри.
+- **Композируемость**: строим сложное из простых функций.
+- **Pythonic стиль**: интуитивно понятный для Python-разработчиков.
+
+---
+
+## Пример реального использования
+
+```python
+from enum import Enum
+from typing import List
+import instructor
+from pydantic import BaseModel
+
+class Priority(str, Enum):
+HIGH = "high"
+MEDIUM = "medium"
+LOW = "low"
+
+class Ticket(BaseModel):
+title: str
+description: str
+priority: Priority
+estimated_hours: float
+
+def prioritize_tickets(tickets: List[Ticket]) -> List[Ticket]:
+return sorted(tickets, key=lambda t: (t.priority.value,
+-t.estimated_hours))
+
+client = instructor.from_provider("openai/gpt-4.1-mini")
+tickets = client.create(
+response_model=List[Ticket],
+messages=[{"role": "user", "content": "Parse these support
+tickets: ..."}],
+)
+_prioritized = prioritize_tickets(tickets)
+```
+
+---
+
+## Философия в одном предложении
+
+**Сделать структурированные выходы LLM настолько простыми, насколько
+это возможно — как определение Pydantic-модели.**
+
+[Ключевые слова]: instructor, pydantic, structured outputs, LLM
+integration, openai, response_model, partial streaming, validation,
+retry, observability, composition over configuration, no vendor
+lock-in, raw API access, pythonic, minimal abstraction
+```
+## Основные клиенты (Core Clients)
+
+- **`Instructor`** — синхронный клиент для взаимодействия с
+LLM-провайдерами.
+- **`AsyncInstructor`** — асинхронный клиент для работы с LLM.
+- **`Response`** — структура, возвращаемая после вызова LLM; содержит
+результат и метаданные.
+
+> Core modes — рекомендуемый способ использования API. Устаревшие
+провайдер-специфичные режимы поддерживаются, но генерируют
+предупреждения.
+
+## Создание клиентов
+
+- **`from_provider()`** — универсальная функция для создания клиента
+из любого поддерживаемого провайдера.
+- **`from_openai()`** — создает клиент на основе OpenAI SDK.
+- **`from_litellm()`** — создает клиент через LiteLLM (поддержка
+множества API совместимых с OpenAI).
+
+## DSL-компоненты
+
+Позволяют задавать сложные паттерны поведения и структуры данных:
+
+- **`iterable`** — для генерации списков/итераций.
+- **`partial`** — для частичного заполнения структур (например,
+пошаговое заполнение полей).
+- **`parallel`** — для параллельных вызовов LLM.
+- **`maybe`** — для опциональных значений (аналог `Optional[T]`).
+- **`citation`** — добавление цитат/источников к ответам.
+
+## Вызовы функций и схемы
+
+- **`function_calls`** — базовые утилиты для работы с вызовами
+функций.
+- **`OpenAISchema`** — декоратор, превращающий Pydantic-модель
+в схему для OpenAI Function Calling.
+- **`openai_schema()`** — генерирует JSON Schema из Pydantic-класса
+(совместимая с OpenAI).
+- **`generate_openai_schema()`**, **`generate_anthropic_schema()`**,
+**`generate_gemini_schema()`** — генерация схем под конкретные API
+провайдеров.
+
+## Валидация
+
+- **`validation`** — модуль, содержащий инструменты валидации.
+- **`llm_validator`** — валидатор, использующий LLM для проверки
+корректности ответа (например: «ответ должен содержать хотя бы один
+URL»).
+- **`openai_moderation`** — интеграция с OpenAI Moderation API для
+фильтрации небезопасного контента.
+
+## Пакетная обработка
+
+- **`batch`**, **`BatchProcessor`**, **`BatchRequest`**,
+**`BatchJob`** — инструменты для массовой отправки запросов и
+обработки результатов пачками (например, обработка 1000+ запросов с
+лимитами).
+
+## Дистилляция и fine-tuning
+
+- **`distil`**, **`FinetuneFormat`1**, **`Instructions`** — утилиты для
+подготовки данных к fine-tuning и дистилляции моделей.
+
+## Мультимодальные данные
+
+- **`multimodal`**, **`Image`**, **`Audio`** — поддержка изображений и
+аудио в запросах (например, передача base64-encoded данных или URL).
+
+## Режимы и провайдеры
+
+- **`Mode`** — перечисление режимов работы (`TOOL`, `FUNCTIONS`,
+`JSON_MODE`, и т.д.).
+- **`Provider`** — перечисление поддерживаемых LLM-провайдеров
+(OpenAI, Anthropic, Gemini и др.).
+
+## Исключения
+
+- **`exceptions`** — набор пользовательских исключений для обработки
+ошибок API (например: `RetryableError`, `ValidationError`,
+`APIConnectionError`).
+
+## Хуки (Hooks)
+
+Система событий для отслеживания и перехвата вызовов LLM:
+
+- **`hooks`**, **`Hooks`**, **`HookName`** — позволяют подписаться на
+события: `before_call`, `after_call`, `on_error`, `on_response`.
+
+## Патчинг методов
+
+- **`patch()`**, **`apatch()`** — декораторы, «подменяющие» методы
+клиентов (например, `openai.ChatCompletion.create`) для автоматической
+обработки схем и валидации.
+
+---
+
+[Ключевые слова]: Instructor, LLM API, OpenAI, Anthropic, Gemini,
+Pydantic, Function Calling, Validation, Async, Batch Processing,
+Multimodal, Hooks, Patching, DSL, Distillation
+```
+# Конспект: Вклад в библиотеку Instructor
+
+## Способы участия
+
+### Тесты на оценку качества (Evals)
+
+- **Цель**: мониторинг качества моделей OpenAI и самой библиотеки
+Instructor.
+- **Процесс вклада**:
+- Изучить существующие evals:
+[`tests/llm/test_openai/evals`](https://github.com/instructor-ai/instru[`tests/llm/test_openai/evals`](https:/github.com/instructor-ai/instructor/tree/main/tests/llm/test_openai/evals)
+- Создать новый `pytest`-тест, оценивающий конкретную
+функциональность или граничные случаи
+- Следовать структуре существующих тестов
+- Отправить PR для ревью и интеграции
+- **Запуск**: evals выполняются еженедельно, результаты отслеживаются
+во времени.
+
+### Сообщение об ошибках (Issues)
+
+При создании issue указать:
+- Чёткий заголовок
+- Подробности:
+- `response_model`
+- `messages`, отправленные в API
+- Используемая модель (`model`)
+- Шаги для воспроизведения
+- Ожидаемое и фактическое поведение
+- Окружение: Python, OS, версии пакетов
+
+### Вклад кода (Pull Requests)
+
+- **Малые изменения**: можно сразу отправлять PR.
+- **Крупные изменения**: сначала создать issue для обсуждения подхода.
+- Идеи для вклада: метки [`help
+wanted`](https://github.com/instructor-ai/instructor/labels/help%20wantwanted`](https://github.com/instructor-i/instructor/labels/help%20wanted), [`goodfirst
+issue`](https://github.com/instructor-ai/instructor/labels/good%20firstissue`](https://github.com/instructor-ai/instructor/laels/good%20first%20issue).
+
+---
+
+## Настройка среды разработки
+
+### Установка pre-commit
+
+```bash
+pip install pre-commit
+pre-commit install
+```
+
+### Инструменты стилизации и проверки кода
+
+- **Ruff**: линтинг и форматирование
+- **ty**: проверка типов
+- **Pre-commit**: автоматические проверки перед коммитом
+
+---
+
+## Стиль кода
+
+### Общие правила
+
+- Использовать строгую типизацию (`from __future__ import
+annotations`)
+- Порядок импортов: стандартная библиотека → сторонние →
+локальные
+- `snake_case` для функций/переменных, `PascalCase` для классов
+- Полные docstrings для публичного API
+
+### Условные комментарии (Conventional Comments)
+
+Формат:
+```
+<label>: <subject>
+
+<description>
+```
+
+**Типы меток**:
+- `praise:` — положительный момент
+- `suggestion:` — предложение улучшения
+- `question:` — вопрос для уточнения
+- `issue:` — проблема, требующая исправления
+- `todo:` — отложенное действие
+- `fix:` — исправление
+
+Пример:
+```
+suggestion: use a validator for this field
+This would ensure the value is always properly formatted.
+```
+
+### Соглашение о коммитах (Conventional Commits)
+
+Формат:
+```
+<type>[optional scope]: <description>
+
+[optional body]
+
+[optional footer]
+```
+
+**Типы**:
+- `feat`: новая функция
+- `fix`: исправление бага
+- `docs`: изменения в документации
+- `style`: форматирование
+- `refactor`: рефакторинг без изменений поведения
+- `test`: добавление/исправление тестов
+- `chore`: технические задачи
+
+**Примеры**:
+```
+feat(openai): add streaming response support
+fix(anthropic): resolve tool calling response format
+docs: update installation instructions
+test(evals): add new recursive schema test cases
+```
+
+Для ломающих изменений добавить `!` перед `:`:
+```
+feat(api)!: change return type of from_openai function
+```
+
+---
+
+## Документация
+
+### Структура и правила
+
+- Все документы — в Markdown (`docs/`)
+- При добавлении страницы: обновить `mkdocs.yml`
+- Локальный предпросмотр: `mkdocs serve`
+- **Стиль**:
+- Уровень чтения ~10 класс (простой и ясный язык)
+- Полные примеры кода с импортами
+- Ссылки на смежные разделы
+- Единообразное форматирование
+
+### Пример документационного блока
+
+```python
+# Complete example with imports
+import instructor
+from pydantic import BaseModel
+
+class Person(BaseModel):
+name: str
+age: int
+
+client = instructor.from_provider("openai/gpt-5-nano")
+
+person = client.create(
+model="gpt-5.4-mini",
+response_model=Person,
+messages=[
+{"role": "user", "content": "Extract: John Doe is 25 years
+old"}
+]
+)
+
+print(person.name)  # "John Doe"
+print(person.age)   # 25
+```
+
+### Особенности Markdown в документации
+
+- **Выделение строк кода**:
+````markdown
+```python hl_lines="2 3"
+def example():
+# This line is highlighted
+# This line is also highlighted
+return "normal line"
+```
+````
+
+- **Адмониции (callout boxes)**:
+```markdown
+!!! note "Optional Title"
+Это примечание.
+
+!!! warning
+Это предупреждение.
+```
+
+---
+
+## Скрипты поддержки документации
+
+| Скрипт | Назначение | Требования |
+|--------|------------|-------------|
+| `make_clean.py` | Очистка Markdown-файлов | — |
+| `check_blog_excerpts.py` | Валидация блог-постов | — |
+| `make_sitemap.py` | Генерация sitemap с AI-анализом |
+`OPENAI_API_KEY`, `openai`, `typer`, `rich`, `tenacity`, `pyyaml` |
+
+**Запуск вручную**:
+```bash
+python scripts/make_clean.py --dry-run
+python scripts/check_blog_excerpts.py
+python scripts/make_sitemap.py --root-dir docs --output-file
+sitemap.yaml
+```
+
+**Pre-commit**: автоматически запускаются при коммитах в `docs/`.
+
+---
+
+## Использование Cursor для PR
+
+- [Cursor](https://cursor.sh) — AI-редактор с поддержкой правил
+проекта (`.cursor/rules/`)
+- `new-features-planning`: планирование новых фич
+- `simple-language`: упрощение документации
+- `documentation-sync`: согласование кода и docs
+
+**Создание PR через Cursor + GitHub CLI**:
+```bash
+gh pr create -t "Your feature title" -b "Description of your changes"
+-r jxnl,ivanleomk
+```
+Добавить в описание: `This PR was written by
+[Cursor](https://cursor.sh)`
+
+---
+
+## Дополнительные ресурсы
+
+- MkDocs Material: https://squidfunk.github.io/mkdocs-material/
+- Conventional Commits: https://www.conventionalcommits.org/
+- Conventional Comments: https://conventionalcomments.org/
+
+---
+```

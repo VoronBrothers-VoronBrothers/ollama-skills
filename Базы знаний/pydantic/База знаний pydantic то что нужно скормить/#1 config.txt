@@ -1,0 +1,161 @@
+```markdown
+## Управление конфигурацией в Pydantic
+
+### Конфигурация моделей Pydantic
+
+Конфигурация задаётся через:
+- Атрибут класса `model_config` с объектом [`ConfigDict`][pydantic.ConfigDict]
+(можно использовать и обычный словарь, напр. `{'str_max_length': 5}`).
+- Параметры класса при наследовании от `BaseModel`, напр. `class Model(BaseModel, frozen=True)`.
+
+> ⚠ В Pydantic V1 использовался класс `Config` — он поддерживается, но **устарел**.
+
+Пример:
+```python
+from pydantic import BaseModel, ConfigDict, ValidationError
+
+class Model(BaseModel):
+model_config = ConfigDict(str_max_length=5)
+v: str
+
+try:
+m = Model(v='abcdef')
+except ValidationError as e:
+print(e)
+```
+
+### Конфигурация dataclasses Pydantic
+
+Поддерживается через параметр `config` декоратора [`@dataclass`](./dataclasses.md#dataclass-config):
+
+```python
+from pydantic import ConfigDict, ValidationError
+from pydantic.dataclasses import dataclass
+
+@dataclass(config=ConfigDict(str_max_length=10, validate_assignment=True))
+class User:
+name: str
+
+user = User(name='John Doe')
+try:
+user.name = 'x' * 20
+except ValidationError as e:
+print(e)
+```
+
+### Конфигурация `TypeAdapter`
+
+Задаётся через параметр `config` при создании экземпляра [`TypeAdapter`][pydantic.TypeAdapter]:
+
+```python
+from pydantic import ConfigDict, TypeAdapter
+
+ta = TypeAdapter(list[str], config=ConfigDict(coerce_numbers_to_str=True))
+print(ta.validate_python([1, 2]))  #> ['1', '2']
+```
+
+> ❗ Конфигурация **не поддерживается**, если тип уже сам по себе поддерживает конфигурацию (например, `BaseModel`), иначе возникает ошибка
+использования.
+
+### Конфигурация стандартных типов Python
+
+Для stdlib-типов (`dataclasses`, `TypedDict`) конфигурация задаётся двумя способами:
+
+1. Через атрибут `__pydantic_config__`:
+```python
+from dataclasses import dataclass
+from pydantic import ConfigDict
+
+@dataclass
+class User:
+__pydantic_config__ = ConfigDict(strict=True)
+id: int
+name: str = 'John Doe'
+```
+
+2. Через декоратор [`@with_config`][pydantic.config.with_config] (особенно полезен для `TypedDict`, чтобы избежать ошибок статической
+проверки типов):
+```python
+from typing_extensions import TypedDict
+from pydantic import ConfigDict, with_config
+
+@with_config(ConfigDict(str_to_lower=True))
+class Model(TypedDict):
+x: str
+```
+
+### Конфигурация декоратора `@validate_call`
+
+Поддерживает пользовательскую конфигурацию — см. [отдельный раздел](./validation_decorator.md#custom-configuration).
+
+### Глобальное изменение поведения
+
+Можно задать базовый класс с общей конфигурацией — настройки будут унаследованы:
+
+```python
+from pydantic import BaseModel, ConfigDict
+
+class Parent(BaseModel):
+model_config = ConfigDict(extra='allow')
+
+class Model(Parent):
+x: str
+
+m = Model(x='foo', y='bar')
+print(m.model_dump())  #> {'x': 'foo', 'y': 'bar'}
+```
+
+При переопределении конфигурации в подклассе она **сливается** с родительской:
+
+```python
+class Parent(BaseModel):
+model_config = ConfigDict(extra='allow', str_to_lower=False)
+
+class Model(Parent):
+model_config = ConfigDict(str_to_lower=True)
+x: str
+
+m = Model(x='FOO', y='bar')
+print(m.model_dump())  #> {'x': 'foo', 'y': 'bar'}
+print(Model.model_config)  #> {'extra': 'allow', 'str_to_lower': True}
+```
+
+> ⚠ При множественном наследовании Pydantic **не следует** MRO (см. [issue #9992](https://github.com/pydantic/pydantic/issues/9992)).
+
+### Распространение конфигурации
+
+- Для моделей и dataclasses Pydantic — конфигурация **не распространяется** на вложенные модели (каждая имеет собственную границу
+конфигурации):
+```python
+class User(BaseModel):
+name: str
+
+class Parent(BaseModel):
+user: User
+model_config = ConfigDict(str_to_lower=True)
+
+print(Parent(user={'name': 'JOHN'}))  #> user=User(name='JOHN')
+```
+
+- Для stdlib-типов — конфигурация **распространяется**, если у типа нет своей конфигурации:
+```python
+@dataclass
+class UserWithoutConfig:
+name: str
+
+@dataclass
+@with_config(str_to_lower=False)
+class UserWithConfig:
+name: str
+
+class Parent(BaseModel):
+user_1: UserWithoutConfig
+user_2: UserWithConfig
+model_config = ConfigDict(str_to_lower=True)
+
+print(Parent(user_1={'name': 'JOHN'}, user_2={'name': 'JOHN'}))
+#> user_1=UserWithoutConfig(name='john') user_2=UserWithConfig(name='JOHN')
+```
+
+[Ключевые слова]: Pydantic, ConfigDict, model_config, BaseModel, dataclass, TypeAdapter, TypedDict, validate_call, configuration
+propagation, inheritance, strict mode, coerce_numbers_to_str, str_to_lower, extra fields, validation error

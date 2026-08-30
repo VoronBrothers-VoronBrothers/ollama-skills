@@ -1,0 +1,173 @@
+## Инструкция по сравнению режимов Instructor
+
+### Общие положения
+
+- Instructor использует **ядерные (core) режимы**, которые работают кросспровайдерно.
+- Режимы, специфичные для провайдера, поддерживаются, но объявлены устаревшими и вызывают предупреждения.
+- Логика обработки режимов перенесена в обработчики провайдеров; DSL больше не хранит логику потоковой передачи
+(streaming), зависящую от режима.
+
+---
+
+### Ядерные режимы
+
+- **`TOOLS`** — вызов инструментов/функций для структурированного извлечения данных.
+- **`JSON_SCHEMA`** — нативная поддержка схемы, если провайдер её поддерживает.
+- **`MD_JSON`** — извлечение JSON из текста или кодовых блоков; используется как резервный или для простых случаев.
+- **`PARALLEL_TOOLS`** — параллельные вызовы нескольких инструментов в одном ответе.
+- **`RESPONSES_TOOLS`** — инструменты API OpenAI Responses.
+
+---
+
+### Устаревшие режимы (deprecated)
+
+Устаревшие режимы маппятся на ядерные:
+
+| Устаревший режим | → | Ядерный режим |
+|------------------|----|---------------|
+| `FUNCTIONS`      | → | `TOOLS`       |
+| `TOOLS_STRICT`   | → | `TOOLS`       |
+| `ANTHROPIC_TOOLS`| → | `TOOLS`       |
+| `ANTHROPIC_JSON` | → | `MD_JSON`     |
+| `GENAI_TOOLS`    | → | `TOOLS`       |
+| `GENAI_JSON`     | → | `JSON_SCHEMA` *(примечание: в документе указано как `JSON`, но маппинг на ядерный режим —
+`JSON_SCHEMA`)* |
+| `MISTRAL_TOOLS`  | → | `TOOLS`       |
+| `MISTRAL_STRUCTURED_OUTPUTS` | → | `JSON_SCHEMA` |
+| `BEDROCK_TOOLS`  | → | `TOOLS`       |
+| `BEDROCK_JSON`   | → | `MD_JSON`     |
+| `FIREWORKS_TOOLS`| → | `TOOLS`       |
+| `FIREWORKS_JSON` | → | `MD_JSON`     |
+| `CEREBRAS_TOOLS` | → | `TOOLS`       |
+| `CEREBRAS_JSON`  | → | `MD_JSON`     |
+| `WRITER_TOOLS`   | → | `TOOLS`       |
+| `WRITER_JSON`    | → | `MD_JSON`     |
+| `PERPLEXITY_JSON`| → | `MD_JSON`     |
+| `VERTEXAI_TOOLS` | → | `TOOLS`       |
+| `VERTEXAI_JSON`  | → | `MD_JSON`     |
+| `VERTEXAI_PARALLEL_TOOLS` | → | `PARALLEL_TOOLS` |
+
+> ⚠ Устаревшие режимы следует использовать только для обратной совместимости.
+
+---
+
+### Рекомендации по выбору режима
+
+- **`TOOLS`** — рекомендуется для большинства случаев структурированного вывода.
+- **`JSON_SCHEMA`** — при наличии нативной поддержки схемы провайдером (например, OpenAI, Mistral).
+- **`MD_JSON`** — если инструменты не поддерживаются или требуется простой fallback.
+- **`PARALLEL_TOOLS`** — для одновременного выполнения нескольких задач в одном запросе.
+
+---
+
+### Примеры использования
+
+#### TOOLS (рекомендуемый)
+
+```python
+import instructor
+from instructor import Mode
+
+client = instructor.from_provider(
+"openai/gpt-4o-mini",
+mode=Mode.TOOLS,
+)
+```
+
+#### MD_JSON (резервный/упрощённый)
+
+```python
+import instructor
+from instructor import Mode
+
+client = instructor.from_provider(
+"bedrock/anthropic.claude-3-5-sonnet-20241022-v2:0",
+mode=Mode.MD_JSON,
+)
+```
+
+#### JSON_SCHEMA (нативная схема)
+
+```python
+import instructor
+from instructor import Mode
+
+client = instructor.from_provider(
+"openai/gpt-4o-mini",
+mode=Mode.JSON_SCHEMA,
+)
+```
+
+#### Google / Gemini
+
+Для сложных структур:
+
+```python
+import instructor
+
+client = instructor.from_provider(
+"google/gemini-2.5-flash",
+mode=instructor.Mode.TOOLS,
+)
+```
+
+Для структурированного JSON-вывода:
+
+```python
+import instructor
+
+client = instructor.from_provider(
+"google/gemini-2.5-flash",
+mode=instructor.Mode.JSON,  # примечание: в документе указан как `JSON`, не `MD_JSON`
+)
+```
+
+---
+
+### Совместимость режимов по провайдерам
+
+| Провайдер     | Режимы (устаревшие / ядерные) |
+|---------------|-------------------------------|
+| **OpenAI**    | `TOOLS`, `TOOLS_STRICT`, `PARALLEL_TOOLS`, `FUNCTIONS`; `JSON`, `MD_JSON`, `JSON_O1` |
+| **Anthropic** | `ANTHROPIC_TOOLS`, `ANTHROPIC_PARALLEL_TOOLS`; `ANTHROPIC_JSON` |
+| **Gemini**    | `TOOLS`; `JSON` *(не `MD_JSON`)* |
+| **Vertex AI** | `VERTEXAI_TOOLS`; `VERTEXAI_JSON` |
+| **Cohere**    | `COHERE_TOOLS`; `JSON`, `MD_JSON` |
+| **Mistral**   | `MISTRAL_TOOLS`; `MISTRAL_STRUCTURED_OUTPUTS` |
+| **Anyscale**  | —; `JSON`, `MD_JSON`, `JSON_SCHEMA` |
+| **Databricks**| `TOOLS`; `JSON`, `MD_JSON` |
+| **Together**  | —; `JSON`, `MD_JSON` |
+| **Fireworks** | `FIREWORKS_TOOLS`; `FIREWORKS_JSON` |
+| **Cerebras**  | —; `CEREBRAS_JSON` |
+| **Writer**    | `WRITER_TOOLS`; `JSON` *(не `MD_JSON`)* |
+| **Perplexity**| —; `PERPLEXITY_JSON` |
+| **GenAI**     | `TOOLS`; `JSON` |
+| **LiteLLM**   | Зависит от провайдера (как для tool-based, так и JSON-режимов) |
+
+---
+
+### Лучшие практики
+
+1. **Начинайте с рекомендуемого режима для вашего провайдера**
+- OpenAI: `TOOLS`
+- Anthropic: `ANTHROPIC_TOOLS` (Claude 3+) или `ANTHROPIC_JSON`
+- Gemini: `TOOLS` или `JSON`
+
+2. **Используйте JSON-режимы при простых структурах или проблемах**
+- Проще реализуются
+- Могут быть более токенноэффективными
+- Работают с большим числом моделей
+
+3. **Применяйте провайдер-специфичные режимы при наличии**
+- Оптимизированы под особенности конкретного API
+- Лучше обрабатывают специфические требования (например, строгая валидация)
+
+4. **Тестируйте и валидируйте**
+- Производительность может отличаться в зависимости от задачи
+- Всегда тестируйте на реальных данных и моделях
+
+---
+
+[Ключевые слова]: Instructor, режимы, mode comparison, TOOLS, JSON_SCHEMA, MD_JSON, PARALLEL_TOOLS, RESPONSES_TOOLS,
+legacy modes, deprecated modes, structured output, tool calling, OpenAI, Anthropic, Gemini, Vertex AI, Mistral,
+Bedrock, Fireworks, Cerebras, Writer, Perplexity, GenAI, LiteLLM

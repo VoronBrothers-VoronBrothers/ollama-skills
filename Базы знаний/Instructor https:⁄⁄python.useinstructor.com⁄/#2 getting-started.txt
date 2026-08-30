@@ -1,0 +1,225 @@
+## Getting Started with Instructor
+
+**Instructor** — библиотека для извлечения структурированных данных из языковых моделей (LLM) с использованием Pydantic-моделей.
+
+### Основные возможности
+- Установка и настройка Instructor
+- Извлечение базовой структурированной информации
+- Обработка валидации и ошибок
+- Работа со стриминговыми ответами
+- Поддержка различных LLM-провайдеров
+
+---
+
+## Установка
+
+```bash
+pip install instructor
+```
+
+Для подключения конкретных провайдеров используются **extras**:
+
+```bash
+# OpenAI (входит по умолчанию)
+pip install instructor
+
+# Anthropic
+pip install "instructor[anthropic]"
+
+# Google / Gemini
+pip install "instructor[google-genai]"
+
+# Vertex AI
+pip install "instructor[vertexai]"
+
+# Cohere
+pip install "instructor[cohere]"
+
+# LiteLLM (множество провайдеров)
+pip install "instructor[litellm]"
+
+# Mistral AI
+pip install "instructor[mistralai]"
+
+# xAI
+pip install "instructor[xai]"
+```
+
+> **Важно**: основная установка содержит только обязательные зависимости. SDK провайдеров подключаются явно.
+
+---
+
+## Настройка окружения
+
+Установите API-ключи как переменные окружения:
+
+```bash
+export OPENAI_API_KEY=your_openai_api_key
+export ANTHROPIC_API_KEY=your_anthropic_api_key
+# и другие в зависимости от провайдера
+```
+
+---
+
+## Первый структурированный вывод
+
+### Базовый пример (OpenAI)
+
+```python
+import instructor
+from pydantic import BaseModel
+
+class UserInfo(BaseModel):
+    name: str
+    age: int
+
+client = instructor.from_provider("openai/gpt-5-nano")
+
+user_info = client.create(
+    response_model=UserInfo,
+    messages=[
+        {"role": "user", "content": "John Doe is 30 years old."}
+    ],
+)
+
+print(f"Name: {user_info.name}, Age: {user_info.age}")
+# Output: Name: John Doe, Age: 30
+```
+
+**Основные этапы**:
+- Определение Pydantic-модели (`BaseModel`)
+- Создание клиента через `instructor.from_provider()`
+- Вызов `client.create(..., response_model=...)`
+
+---
+
+## Валидация и обработка ошибок
+
+Используется валидация Pydantic. При несоответствии — автоматический повторный запрос (retry) с обратной связью.
+
+```python
+from pydantic import BaseModel, Field, field_validator
+
+class User(BaseModel):
+    name: str
+    age: int = Field(gt=0, lt=120)
+
+    @field_validator('name')
+    def name_must_have_space(cls, v):
+        if ' ' not in v:
+            raise ValueError('Name must include first and last name')
+        return v
+
+user = client.create(
+    response_model=User,
+    messages=[
+        {"role": "user", "content": "Extract: Tom is 25 years old."}
+    ],
+)
+```
+
+> **Важно**: `Field(...)` и `@field_validator` позволяют задавать ограничения и кастомные правила.
+
+---
+
+## Работа со сложными моделями (вложенные структуры)
+
+```python
+from pydantic import BaseModel
+from typing import List
+
+class Address(BaseModel):
+    street: str
+    city: str
+    state: str
+    zip_code: str
+
+class Person(BaseModel):
+    name: str
+    age: int
+    addresses: List[Address]
+
+person = client.create(
+    response_model=Person,
+    messages=[
+        {"role": "user", "content": """
+        Extract: John Smith is 35 years old.
+        He has homes at 123 Main St, Springfield, IL 62704 and
+        456 Oak Ave, Chicago, IL 60601.
+        """}
+    ],
+)
+```
+
+---
+
+## Стриминг ответов
+
+Для частичной генерации и улучшения UX:
+
+```python
+from instructor import Partial
+
+stream = client.create_partial(
+    response_model=Person,
+    messages=[
+        {"role": "user", "content": "Extract a detailed person profile for John Smith, 35, who lives in Chicago and Springfield."}
+    ],
+)
+
+for partial in stream:
+    print(partial)
+```
+
+---
+
+## Использование других провайдеров
+
+### Пример: Anthropic
+
+```python
+import instructor
+from pydantic import BaseModel
+
+class UserInfo(BaseModel):
+    name: str
+    age: int
+
+client = instructor.from_provider("anthropic/claude-3-opus-20240229")
+
+user_info = client.create(
+    response_model=UserInfo,
+    messages=[
+        {"role": "user", "content": "John Doe is 30 years old."}
+    ],
+)
+```
+
+> Поддерживаемые провайдеры: OpenAI, Anthropic, Google (Gemini), Vertex AI, Cohere, Mistral, xAI, LiteLLM.
+
+---
+
+## Часто задаваемые вопросы (FAQ)
+
+- **Start Here vs Getting Started**:
+  - *Start Here* — концептуальное введение
+  - *Getting Started* — практическое руководство
+
+- **Рекомендуемый старт**: OpenAI (надежность и поддержка)
+
+- **Знание Pydantic**: не обязательно на старте, достаточно простых моделей
+
+- **Асинхронная работа**:
+  ```python
+  client = instructor.from_provider("openai/gpt-4o", async_client=True)
+  # затем: await client.create(...)
+  ```
+
+- **Повторы при валидации**: автоматические, настраивается через `max_retries`
+
+---
+
+
+
+## Ключевые слова:
+instructor, structured output, Pydantic, LLM, OpenAI, Anthropic, Google Gemini, Vertex AI, Cohere, Mistral, xAI, LiteLLM, from_provider, response_model, validation, streaming, async, retry mechanism

@@ -1,0 +1,90 @@
+## SQLite: Практические примеры создания таблиц
+
+### 1. Простая таблица (логи / заметки)
+- Автоматический `id` (`INTEGER PRIMARY KEY AUTOINCREMENT`)
+- Автоматическая дата и время при вставке (`DEFAULT (datetime('now', 'localtime'))`)
+- Тип данных: `TEXT NOT NULL`
+
+```sql
+CREATE TABLE sys_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    log_text TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now', 'localtime'))
+);
+```
+
+### 2. Таблица пользователей (с ограничениями)
+- Уникальность `email` (`UNIQUE`)
+- Проверка значения баланса (`CHECK(balance >= 0)`)
+- Логический флаг как `INTEGER` (1 = true, 0 = false)
+- Дата регистрации только в формате `ГГГГ-ММ-ДД`
+
+```sql
+CREATE TABLE users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT NOT NULL,
+    email TEXT UNIQUE NOT NULL,
+    balance REAL DEFAULT 0.0 CHECK(balance >= 0),
+    is_active INTEGER DEFAULT 1,
+    registered_date TEXT DEFAULT (date('now'))
+);
+```
+
+### 3. Связь «Один ко многим»
+- Внешний ключ `user_id` → `users(id)`
+- Каскадное удаление (`ON DELETE CASCADE`)
+- Автоматическая дата/время заказа
+
+```sql
+CREATE TABLE orders (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    order_sum REAL NOT NULL,
+    order_date TEXT DEFAULT (datetime('now', 'localtime')),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+```
+
+### 4. Связь «Многие ко многим»
+- Используется **промежуточная таблица** (`student_courses`)
+- Составной первичный ключ: `(student_id, course_id)`
+- Каскадное удаление по обоим ссылкам
+
+```sql
+-- Таблица студентов
+CREATE TABLE students (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL
+);
+
+-- Таблица курсов
+CREATE TABLE courses (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL
+);
+
+-- Промежуточная таблица
+CREATE TABLE student_courses (
+    student_id INTEGER,
+    course_id INTEGER,
+    enrolled_at TEXT DEFAULT (date('now')),
+    PRIMARY KEY (student_id, course_id),
+    FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
+    FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE
+);
+```
+
+### Вставка данных (`INSERT`)
+- `AUTOINCREMENT` и `DEFAULT` значения **не указываются** в `INSERT`
+- Можно явно задать дату при необходимости
+
+```sql
+-- Автоматические поля подставляются SQLite
+INSERT INTO sys_logs (log_text) VALUES ('Система успешно запущена');
+
+-- Ручное указание даты
+INSERT INTO users (username, email, registered_date)
+VALUES ('Иван', 'ivan@example.com', '2026-01-15');
+```
+
+[Ключевые слова]: SQLite, CREATE TABLE, AUTOINCREMENT, FOREIGN KEY, UNIQUE, CHECK, CASCADE, составной первичный ключ, промежуточная таблица, datetime('now'), date('now'), one-to-many, many-to-many, INSERT

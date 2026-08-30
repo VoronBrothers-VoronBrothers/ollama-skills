@@ -1,0 +1,267 @@
+```markdown
+## Field constraints
+
+- `Field()` позволяет задавать ограничения для полей конкретных типов:
+- `gt`, `lt`, `ge`, `le` — числовые сравнения (`int`, `float`, `Decimal`)
+- `max_length`, `min_length` — длина строк
+- `max_digits`, `decimal_places` — точность для `Decimal`
+- Пример:
+```python
+class Model(BaseModel):
+positive: int = Field(gt=0)
+short_str: str = Field(max_length=3)
+precise_decimal: Decimal = Field(max_digits=5, decimal_places=2)
+```
+- При использовании `Field()` с объединениями (`Union`, `| None`), ограничения автоматически применяются к ненулевым типам:
+```python
+positive: int | None = Field(gt=0)
+negative: Annotated[int | None, Field(lt=0)]
+```
+
+## Strict fields
+
+- Параметр `strict=True` включает строгую валидацию поля (без неявных преобразований типов).
+- По умолчанию `strict=False`.
+- Пример:
+```python
+class User(BaseModel):
+name: str = Field(strict=True)
+age: int = Field(strict=False)
+
+user = User(name='John', age='42')  # age будет приведено к int
+```
+
+## Dataclass fields
+
+Для `@dataclass` поддерживаются параметры:
+- `init`: включить поле в `__init__()`
+- `init_var=True`: сделать поле только для инициализации (не сериализуется)
+- `kw_only=True`: сделать аргумент ключевым
+
+Пример:
+```python
+@dataclass
+class Foo:
+bar: str
+baz: str = Field(init_var=True)  # не попадёт в model_dump()
+qux: str = Field(kw_only=True)
+
+model = Model(foo=Foo('bar', baz='baz', qux='qux'))
+# {'foo': {'bar': 'bar', 'qux': 'qux'}}
+```
+
+## Field representation
+
+- Параметр `repr` (по умолчанию `True`) управляет отображением поля в строковом представлении модели (`__repr__()`).
+```python
+class User(BaseModel):
+name: str = Field(repr=True)
+age: int = Field(repr=False)
+
+print(user)  # > name='John'
+```
+
+## Discriminator
+
+- Параметр `discriminator` указывает поле, по которому Pydantic определяет тип в объединении.
+- Поддерживает:
+- строку — имя поля
+- объект `Discriminator(...)` с пользовательской функцией-дискриминатором
+
+Примеры:
+```python
+# Простой дискриминатор по полю
+pet: Cat | Dog = Field(discriminator='pet_type')
+
+# Сложный дискриминатор через Discriminator + Tag
+def pet_discriminator(v):
+if isinstance(v, dict):
+return v.get('pet_type', v.get('pet_kind'))
+return getattr(v, 'pet_type', getattr(v, 'pet_kind', None))
+
+pet: Annotated[Cat, Tag('cat')] | Annotated[Dog, Tag('dog')] = Field(
+discriminator=Discriminator(pet_discriminator)
+)
+```
+
+## Immutability and deprecation
+
+### Deprecated fields
+
+- Параметр `deprecated` (начиная с v2.7.0):
+- при чтении/записи поля — генерируется `DeprecationWarning`
+- в JSON Schema добавляется ключ `"deprecated": true`
+
+Поддерживаемые значения:
+- `True`: простая пометка как устаревшего
+- `str`: сообщение об устаревании (в коде не отображается, но может быть использовано)
+- `@warnings.deprecated(...)` или `typing_extensions.deprecated(...)`
+
+Примеры:
+```python
+# Строковое сообщение
+Field(deprecated='This is deprecated')
+
+# Декоратор
+Field(deprecated=deprecated('This is deprecated'))
+
+# Булево значение
+Field(deprecated=True)
+```
+
+> ⚠ В валидаторах устаревшее поле вызовет предупреждение. Чтобы подавить:
+```python
+with warnings.catch_warnings():
+warnings.simplefilter('ignore', DeprecationWarning)
+self.deprecated_field = ...
+```
+
+## Customizing JSON Schema
+
+Параметры, влияющие только на JSON-схему:
+- `title`, `description`, `examples`
+- `json_schema_extra` — произвольные дополнительные данные в схеме
+
+## Computed fields
+
+- Декоратор [`@computed_field`](https://docs.pydantic.dev/latest/api/fields/#pydantic.fields.computed_field) (начиная с v2.13 — поддержка
+`exclude_if`)
+- Позволяет включать свойства (`property`, `cached_property`) в сериализацию и JSON-схему (режим `'serialization'`).
+- Свойства не проходят валидацию, кэширование и т.п.
+
+Пример:
+```python
+class Box(BaseModel):
+width: float
+height: float
+depth: float
+
+@computed_field
+@property
+def volume(self) -> float:
+return self.width * self.height * self.depth
+
+# JSON Schema (serialization mode)
+{
+'properties': {
+'width': {'type': 'number'},
+'height': {'type': 'number'},
+'depth': {'type': 'number'},
+'volume': {'readOnly': True, 'type': 'number'}
+},
+'required': ['width', 'height', 'depth', 'volume']
+}
+```
+```
+
+... ```
+...
+... 1. If not specified, [`@computed_field`][pydantic.fields.computed_field] will implicitly convert the method
+...    to a [`@property`][property]. However, it is preferable to explicitly use the [`@property`][property] decorator
+...    for type checking purposes.
+...
+... Here's an example using the [`model_dump()`][pydantic.BaseModel.model_dump] method with a computed field:
+...
+... ```python
+... from pydantic import BaseModel, computed_field
+...
+...
+... class Box(BaseModel):
+...     width: float
+...     height: float
+...     depth: float
+...
+...     @computed_field
+...     @property
+...     def volume(self) -> float:
+...         return self.width * self.height * self.depth
+...
+...
+... b = Box(width=1, height=2, depth=3)
+... print(b.model_dump())
+... #> {'width': 1.0, 'height': 2.0, 'depth': 3.0, 'volume': 6.0}
+... ```
+...
+... As with regular fields, computed fields can be marked as being deprecated:
+...
+... ```python
+... from typing_extensions import deprecated
+...
+... from pydantic import BaseModel, computed_field
+...
+...
+... class Box(BaseModel):
+...     width: float
+...     height: float
+...     depth: float
+...
+...     @computed_field
+...     @property
+...     @deprecated("'volume' is deprecated")
+...     def volume(self) -> float:
+...         return self.width * self.height * self.depth
+... ```
+...
+... [frozen dataclass documentation]: https://docs.python.org/3/library/dataclasses.html#frozen-instances
+... [Customizing JSON Schema]: json_schema.md#field-level-customization
+
+... ```
+## `@computed_field` в Pydantic
+
+### Основные особенности использования `@computed_field`
+
+- Если не указан явно, `@computed_field` **неявно превращает метод в `@property`**, но для корректной работы статической типизации
+рекомендуется использовать оба декоратора: `@computed_field` и `@property`.
+- Вычисляемые поля:
+- Не хранятся в модели напрямую.
+- Рассчитываются динамически при обращении или экспорте (например, через `model_dump()`).
+- Включаются в вывод методов сериализации по умолчанию (`model_dump()`, `model_json()` и т.д.).
+
+### Пример базового использования
+
+```python
+from pydantic import BaseModel, computed_field
+
+
+class Box(BaseModel):
+width: float
+height: float
+depth: float
+
+@computed_field
+@property
+def volume(self) -> float:
+return self.width * self.height * self.depth
+
+
+b = Box(width=1, height=2, depth=3)
+print(b.model_dump())
+#> {'width': 1.0, 'height': 2.0, 'depth': 3.0, 'volume': 6.0}
+```
+
+### Декорирование вычисляемых полей как устаревших
+
+- Вычисляемые поля можно пометить как **устаревшие** с помощью `@deprecated` из `typing_extensions`.
+- Это вызывает предупреждение при использовании поля, но не влияет на его работу.
+
+```python
+from typing_extensions import deprecated
+from pydantic import BaseModel, computed_field
+
+
+class Box(BaseModel):
+width: float
+height: float
+depth: float
+
+@computed_field
+@property
+@deprecated("'volume' is deprecated")
+def volume(self) -> float:
+return self.width * self.height * self.depth
+```
+
+---
+
+**[Ключевые слова]:** `@computed_field`, `pydantic`, `BaseModel`, `model_dump()`, `@property`, `typing_extensions.deprecated`, вычисляемое
+поле, динамическое поле, сериализация, статическая типизация

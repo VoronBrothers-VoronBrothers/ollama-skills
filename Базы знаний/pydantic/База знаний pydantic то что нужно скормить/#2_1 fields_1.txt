@@ -1,0 +1,141 @@
+```markdown
+## Пользовательские настройки полей в Pydantic
+
+### Использование `Field()` для кастомизации полей
+
+Функция [`Field()`][pydantic.fields.Field] используется для задания метаданных и параметров полей модели:
+
+- Поведение аналогично [`dataclasses.field()`][dataclasses.field].
+- Присваивается аннотированному атрибуту, но **не задаёт значение по умолчанию**, если не указано явно.
+
+```python
+from pydantic import BaseModel, Field
+
+class Model(BaseModel):
+name: str = Field(frozen=True)  # поле обязательное, frozen=True
+```
+
+Для подчёркивания обязательности можно использовать `...`, но это **не рекомендуется** из-за проблем с type checkers:
+
+```python
+name: str = Field(..., frozen=True)
+```
+
+---
+
+### Паттерн `Annotated`
+
+Позволяет прикреплять метаданные к типу через [`typing.Annotated`][typing.Annotated]:
+
+```python
+from typing import Annotated
+from pydantic import BaseModel, Field, WithJsonSchema
+
+class Model(BaseModel):
+name: Annotated[str, Field(validation_alias='username')]
+```
+
+#### Преимущества:
+- Поддержка `validation_alias`, `serialization_alias`, `validate_default` и др.
+- Не влияет на статическую типизацию (понятен только Pydantic).
+
+#### Примеры использования:
+
+```python
+# Только валидация через alias
+name: Annotated[str, Field(validation_alias='username')]
+
+# Только сериализация через alias
+name: Annotated[str, Field(serialization_alias='username')]
+```
+
+---
+
+### Валидация значений по умолчанию
+
+По умолчанию значения по умолчанию **не валидируются**. Для включения:
+
+- Параметр `validate_default=True` в `Field()`
+- Или `ConfigDict(validate_default=True)`
+
+```python
+class User(BaseModel):
+age: int = Field(default='twelve', validate_default=True)
+```
+
+При создании экземпляра без аргументов вызовется ошибка валидации.
+
+---
+
+### Мутабельные значения по умолчанию
+
+Pydantic **автоматически делает глубокую копию** мутабельных значений (списков, словарей и т.п.) при каждом создании экземпляра:
+
+```python
+class Model(BaseModel):
+item_counts: list[dict[str, int]] = [{}]
+
+m1 = Model()
+m1.item_counts[0]['a'] = 1
+
+m2 = Model()  # не влияет на m1
+# m2.item_counts == [{}]
+```
+
+---
+
+### Псевдонимы полей (`alias`)
+
+#### Типы псевдонимов:
+- `alias='foo'` — для валидации и сериализации.
+- `validation_alias='foo'` — только при вводе/валидации.
+- `serialization_alias='foo'` — только при выводе.
+
+```python
+class User(BaseModel):
+name: str = Field(alias='username')  # alias для всего
+
+user = User(username='johndoe')
+print(user.model_dump(by_alias=True))  # {'username': 'johndoe'}
+```
+
+#### Приоритеты:
+- `validation_alias` > `alias` (при валидации)
+- `serialization_alias` > `alias` (при сериализации)
+
+---
+
+### Статическая типизация и IDE
+
+Если задан `Field(alias='...')`, type checker использует псевдоним в `__init__`.
+При `validate_by_name=True` — ошибка при использовании реального имени.
+
+Решение: использовать паттерн `Annotated`, чтобы игнорировать поведение type checker:
+
+```python
+name: Annotated[str, Field(alias='username')]
+```
+
+#### Работа с `validation_alias` и type checkers
+
+Type checkers не понимают `validation_alias`. Обходной путь:
+
+```python
+class MyModel(BaseModel):
+my_field: int = Field(
+alias='myValidationAlias',
+serialization_alias='my_field',  # переопределяет alias при сериализации
+)
+```
+
+---
+
+### Числовые и строковые ограничения
+
+См. разделы:
+- [`#numeric-constraints`](#numeric-constraints)
+- [`#string-constraints`](#string-constraints)
+- [`#decimal-constraints`](#decimal-constraints)
+
+(Анкоры оставлены для обратной совместимости.)
+```

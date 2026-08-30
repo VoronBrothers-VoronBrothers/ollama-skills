@@ -1,0 +1,194 @@
+```markdown
+## Custom Validators в Pydantic
+
+### Общие принципы
+- **Валидатор** — это вызываемый объект (функция), принимающий значение и **возвращающий валидное значение**.
+- Валидаторы могут:
+- Проверять условия и выбрасывать исключения (`ValueError`, `ValidationError`)
+- Изменять (коэрировать/мутатировать) входные данные
+- Поддерживаются два способа объявления: через `Annotated` + валидаторы или декоратор `@field_validator`
+
+---
+
+## Field validators
+
+### 1. After validators
+**Запускаются после внутренней валидации Pydantic**, типизированы, безопасны и проще в реализации.
+
+#### Особенности:
+- Входное значение уже приведено к аннотированному типу
+- Обязательно возвращать результат (даже если не меняется)
+- Подходят для логических проверок и мутаций после парсинга
+
+#### Примеры:
+
+```python
+# Annotated pattern
+from typing import Annotated
+from pydantic import AfterValidator, BaseModel, ValidationError
+
+def is_even(value: int) -> int:
+if value % 2 == 1:
+raise ValueError(f'{value} is not an even number')
+return value
+
+class Model(BaseModel):
+number: Annotated[int, AfterValidator(is_even)]
+
+# Decorator
+from pydantic import BaseModel, ValidationError, field_validator
+
+class Model(BaseModel):
+number: int
+
+@field_validator('number', mode='after')  # mode='after' — по умолчанию
+@classmethod
+def is_even(cls, value: int) -> int:
+if value % 2 == 1:
+raise ValueError(f'{value} is not an even number')
+return value
+```
+
+#### Изменение значения:
+```python
+def double_number(value: int) -> int:
+return value * 2
+
+class Model(BaseModel):
+number: Annotated[int, AfterValidator(double_number)]
+
+# Model(number=2) → number=4
+```
+
+---
+
+### 2. Before validators
+**Запускаются до внутренней валидации Pydantic**, работают с «сырым» входом (`Any`), дают максимальную гибкость.
+
+#### Особенности:
+- Входное значение **не приведено к типу**
+- Возвращаемое значение проходит стандартную валидацию Pydantic
+- Не мутируйте вход, если планируете выброс ошибки (особенно при использовании `Union`)
+
+#### Примеры:
+
+```python
+# Annotated pattern
+from typing import Any, Annotated
+from pydantic import BeforeValidator, BaseModel
+
+def ensure_list(value: Any) -> Any:
+if not isinstance(value, list):
+return [value]
+return value
+
+class Model(BaseModel):
+numbers: Annotated[list[int], BeforeValidator(ensure_list)]
+
+# Model(numbers=2) → numbers=[2]
+
+# Decorator
+from pydantic import BaseModel, field_validator
+
+class Model(BaseModel):
+numbers: list[int]
+
+@field_validator('numbers', mode='before')
+@classmethod
+def ensure_list(cls, value: Any) -> Any:
+if not isinstance(value, list):
+return [value]
+return value
+```
+
+---
+
+### 3. Plain validators
+**Завершают валидацию сразу после выполнения**, игнорируют стандартную проверку типов Pydantic.
+
+#### Особенности:
+- Не вызываются другие валидаторы (включая внутренние)
+- Возвращаемое значение принимается как есть
+- Используются, когда нужно полностью заменить стандартную логику
+
+#### Пример:
+
+```python
+# Annotated pattern
+from typing import Any, Annotated
+from pydantic import PlainValidator, BaseModel
+
+def val_number(value: Any) -> Any:
+if isinstance(value, int):
+return value * 2
+else:
+return value
+
+class Model(BaseModel):
+number: Annotated[int, PlainValidator(val_number)]
+
+# Model(number=4) → number=8
+# Model(number='invalid') → number='invalid' (без ошибки!)
+```
+
+---
+
+### 4. Wrap validators
+**Самые гибкие**: позволяют обернуть вызов валидатора Pydantic, перехватывать/изменять поведение.
+
+#### Особенности:
+- Обязательный параметр `handler: ValidatorFunctionWrapHandler`
+- Можно вызвать `handler(value)` для делегирования валидации
+- Поддержка `try..except ValidationError` для кастомной обработки ошибок
+
+#### Пример:
+
+```python
+# Annotated pattern
+from typing import Any, Annotated
+from pydantic import WrapValidator, BaseModel, Field, ValidationError, ValidatorFunctionWrapHandler
+
+def truncate(value: Any, handler: ValidatorFunctionWrapHandler) -> str:
+try:
+return handler(value)
+except ValidationError as err:
+if err.errors()[0]['type'] == 'string_too_long':
+return handler(value[:5])
+else:
+raise
+
+class Model(BaseModel):
+my_string: Annotated[str, Field(max_length=5), WrapValidator(truncate)]
+
+# Model(my_string='abcdef') → my_string='abcde'
+```
+
+#### Decorator-версия:
+
+```python
+from pydantic import BaseModel, Field, field_validator, ValidationError
+
+class Model(BaseModel):
+my_string: Annotated[str, Field(max_length=5)]
+
+@field_validator('my_string', mode='wrap')
+@classmethod
+def truncate(cls, value: Any, handler: ValidatorFunctionWrapHandler) -> str:
+try:
+return handler(value)
+except ValidationError as err:
+if err.errors()[0]['type'] == 'string_too_long':
+return handler(value[:5])
+else:
+raise
+```
+
+---
+
+## Важные замечания
+
+### Валидация значений по умолчанию
+- Значения по умолчанию **не валидируются**, если явно не включено:
+`model_config = {'validate_default': True}`
+- Соответственно, кастомные валидаторы **не применяются** к дефолтным значениям без этой настройки.
+```

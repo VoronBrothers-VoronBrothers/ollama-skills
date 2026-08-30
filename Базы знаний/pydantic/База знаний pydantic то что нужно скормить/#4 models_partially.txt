@@ -1,0 +1,364 @@
+## Основы работы с Pydantic: модели и валидация
+
+### Модели Pydantic
+
+- Модели — это классы, наследующиеся от `pydantic.main.BaseModel`.
+- Определяют структуру данных через аннотации полей.
+- Аналогичны `struct` в C или требованиям к входным данным одного API endpoint.
+
+#### Особенности по сравнению с `dataclasses`:
+- Встроенные механизмы **валидации**, **сериализации** и **генерации JSON Schema**.
+- Поддержка приведения типов (coercion), строгой валидации, гибкой конфигурации.
+
+---
+
+### Валидация: терминология и поведение
+
+- **Валидация** — процесс создания экземпляра модели с соблюдением указанных типов и ограничений.
+- Pydantic гарантирует соответствие **выходных данных**, а не входных.
+- `ValidationError` возникает при невозможности привести данные к модели.
+
+#### Важные детали:
+- Валидация может включать **копирование** и **приведение типов** без изменения исходных данных.
+- Термин «валидация» используется условно, но устоялся в сообществе.
+
+---
+
+### Базовое использование модели
+
+#### Пример определения модели:
+```python
+from pydantic import BaseModel, ConfigDict
+
+
+class User(BaseModel):
+id: int
+name: str = 'Jane Doe'
+
+model_config = ConfigDict(str_max_length=10)
+```
+
+- `id`: обязательное поле типа `int`.
+- `name`: необязательное поле с дефолтным значением.
+- Конфигурация модели через `model_config`.
+
+#### Создание и использование экземпляра:
+```python
+user = User(id='123')  # строка '123' приводится к int
+
+assert user.name == 'Jane Doe'
+assert user.id == 123 and isinstance(user.id, int)
+```
+
+- При отсутствии `ValidationError` модель считается валидной.
+- Доступ к полям как к атрибутам объекта.
+
+#### Сериализация:
+```python
+user.model_dump()  # → {'id': 123, 'name': 'Jane Doe'}
+dict(user)         # не рекомендуется для вложенных структур
+```
+
+- `model_dump()` поддерживает параметры кастомизации.
+- По умолчанию модели **изменяемы**:
+```python
+user.id = 321
+```
+
+#### Предупреждение: конфликт имён полей и типов
+```python
+class Boo(BaseModel):
+int: int | None = None
+
+m = Boo(int=123)  # ❌ ошибка валидации!
+# Python интерпретирует как `int: None = None`
+```
+
+---
+
+### Методы и атрибуты модели (`BaseModel`)
+
+#### Классовые методы:
+| Метод | Описание |
+|-------|----------|
+| `model_validate()` | Валидация входных данных в модель |
+| `model_dump()` / `model_dump_json()` | Сериализация в dict / JSON |
+| `model_copy()` | Поверхностное копирование модели |
+| `model_json_schema()` | Генерация JSON Schema |
+| `model_rebuild()` | Пересборка схемы (для рекурсивных/параметризованных моделей) |
+| `model_post_init()` | Действия после инициализации модели |
+| `model_fields`, `model_computed_fields` | Метаданные полей |
+
+#### Атрибуты экземпляра:
+- `model_extra`: словарь с «лишними» полями (если разрешено).
+- `model_fields_set`: множество явно заданных при создании полей.
+
+---
+
+### Приведение типов и строгий режим
+
+#### Пример приведения:
+```python
+class Model(BaseModel):
+a: int
+b: float
+c: str
+
+print(Model(a=3.0, b='2.72', c=b'binary data').model_dump())
+# → {'a': 3, 'b': 2.72, 'c': 'binary data'}
+```
+
+- По умолчанию Pydantic **приводит типы**.
+- Для отключения: [`strict_mode`](strict_mode.md).
+
+#### Коллекции:
+```python
+class Model(BaseModel):
+items: list[int]
+
+print(Model(items=(1, 2, 3)))  # → items=[1, 2, 3]
+```
+- Кортежи и другие итерабельные объекты автоматически приводятся к `list`.
+- Использование абстрактных типов (`Sequence`, `Mapping`) может ухудшить производительность.
+
+---
+
+### Обработка «лишних» полей
+
+#### По умолчанию:
+```python
+class Model(BaseModel):
+x: int
+
+m = Model(x=1, y='a')
+assert m.model_dump() == {'x': 1}  # лишнее игнорируется
+```
+
+#### Настройка через `extra` в конфигурации:
+| Значение | Поведение |
+|----------|-----------|
+| `'ignore'` (по умолчанию) | Лишние поля отбрасываются |
+| `'forbid'` | Вызывает ошибку при наличии лишних полей |
+| `'allow'` | Сохраняет в `__pydantic_extra__` |
+
+```python
+class Model(BaseModel):
+x: int
+
+model_config = ConfigDict(extra='allow')
+
+m = Model(x=1, y='a')
+assert m.model_dump() == {'x': 1, 'y': 'a'}
+assert m.__pydantic_extra__ == {'y': 'a'}
+```
+
+- Методы валидации (`model_validate(...)`) поддерживают параметр `extra`, переопределяющий конфигурацию.
+
+---
+
+### Вложенные модели
+
+#### Пример иерархической структуры:
+```python
+class Foo(BaseModel):
+count: int
+size: float | None = None
+
+
+class Bar(BaseModel):
+apple: str = 'x'
+banana: str = 'y'
+```
+
+- Поля могут использовать другие модели как типы.
+- Поддержка вложенных структур, рекурсивных моделей и параметризованных типов.
+
+markdown
+
+
+## Основы работы с моделями Pydantic
+
+### Пример базовой модели и её использование
+
+- Модель `Spam` содержит поля:
+  - `foo`: экземпляр класса `Foo`
+  - `bars`: список экземпляров `Bar`
+
+```python
+class Spam(BaseModel):
+    foo: Foo
+    bars: list[Bar]
+Создание экземпляра с помощью словарей:
+python
+
+
+m = Spam(foo={'count': 4}, bars=[{'apple': 'x1'}, {'apple': 'x2'}])
+print(m)
+# foo=Foo(count=4, size=None) bars=[Bar(apple='x1', banana='y'), Bar(apple='x2', banana='y')]
+Сериализация в словарь:
+python
+
+
+m.model_dump()
+# {
+#     'foo': {'count': 4, 'size': None},
+#     'bars': [{'apple': 'x1', 'banana': 'y'}, {'apple': 'x2', 'banana': 'y'}],
+# }
+Само-ссылающиеся (рекурсивные) модели
+Поддерживаются через forward annotations.
+Используется метод [model_rebuild()][pydantic.main.BaseModel.model_rebuild] для перестроения схемы после определения всех зависимых типов.
+python
+
+
+from pydantic import BaseModel, PydanticUserError
+
+class Foo(BaseModel):
+    x: 'Bar'  # forward reference
+
+try:
+    Foo.model_json_schema()
+except PydanticUserError as e:
+    print(e)
+    # `Foo` is not fully defined; you should define `Bar`, then call `Foo.model_rebuild()`.
+
+class Bar(BaseModel):
+    pass
+
+Foo.model_rebuild()
+print(Foo.model_json_schema())
+# {
+#     '$defs': {'Bar': {'properties': {}, 'title': 'Bar', 'type': 'object'}},
+#     'properties': {'x': {'$ref': '#/$defs/Bar'}},
+#     'required': ['x'],
+#     'title': 'Foo',
+#     'type': 'object',
+# }
+В Pydantic V2 метод [model_rebuild()][pydantic.main.BaseModel.model_rebuild] заменил update_forward_refs() из V1.
+При вызове на внешней модели строится полная схема валидации, поэтому все вложенные типы должны быть определены заранее.
+Режимы валидации данных
+1. Python mode (по умолчанию)
+Используется при:
+
+__init__(): значения передаются как именованные аргументы.
+[model_validate()][pydantic.main.BaseModel.model_validate]:
+словарь или экземпляр модели (если не включено revalidate_instances)
+произвольные объекты — при явном разрешении.
+2. JSON mode
+Используется с:
+
+[model_validate_json()][pydantic.main.BaseModel.model_validate_json]:
+вход: строка или байты в формате JSON.
+быстрее, чем ручной парсинг → dict.
+3. Strings mode
+Используется с:
+
+[model_validate_strings()][pydantic.main.BaseModel.model_validate_strings]:
+вход: словарь (в том числе вложенный) со строковыми ключами и значениями.
+строки приводятся к нужным типам как при JSON-валидации.
+Примеры валидации
+python
+
+
+from datetime import datetime
+from pydantic import BaseModel, ValidationError
+
+class User(BaseModel):
+    id: int
+    name: str = 'John Doe'
+    signup_ts: datetime | None = None
+
+# Python mode
+m = User.model_validate({'id': 123, 'name': 'James'})
+print(m)  # id=123 name='James' signup_ts=None
+
+# JSON mode — ошибка при нестроковом значении
+try:
+    m = User.model_validate_json('{"id": 123, "name": 123}')
+except ValidationError as e:
+    print(e)
+    # 1 validation error for User
+    # name: Input should be a valid string [type=string_type, input_value=123]
+
+# Strings mode — строки приводятся к нужным типам
+m = User.model_validate_strings({'id': '123', 'name': 'James'})
+print(m)  # id=123 name='James' signup_ts=None
+
+m = User.model_validate_strings({
+    'id': '123',
+    'name': 'James',
+    'signup_ts': '2024-04-01T12:00:00'
+})
+print(m)  # id=123 name='James' signup_ts=2024-04-01 12:00:00
+
+# Строгий режим (strict=True)
+try:
+    m = User.model_validate_strings({
+        'id': '123',
+        'name': 'James',
+        'signup_ts': '2024-04-01T12:00:00'
+    }, strict=True)  # если strict=True в конфиге
+except ValidationError:
+    ...
+Создание моделей без валидации
+[model_construct()][pydantic.main.BaseModel.model_construct]
+Не выполняет валидацию.
+Используется для:
+ускорения при уже проверенных данных;
+избежания побочных эффектов от неидемпотентных валидаторов.
+python
+
+
+m = MyModel.model_construct(id=123)  # без валидации
+⚠️ Важно: может создать невалидный объект. Используйте только с доверенными/уже валидированными данными.
+
+Особенности поведения:
+Не вызывается __init__(), даже если переопределён.
+Значения по умолчанию применяются, если аргументы не переданы.
+Для приватных атрибутов (__pydantic_private__) заполняется словарь как при валидации.
+Поведение с extra:
+'allow': лишние данные сохраняются в __pydantic_extra__.
+'ignore': игнорируются (не попадают ни в __dict__, ни в __pydantic_extra__).
+'forbid': не вызывает ошибку, просто игнорирует лишние данные.
+Кастомизация __init__()
+По умолчанию Pydantic предоставляет реализацию, которая делегирует валидацию pydantic-core.
+При переопределении:
+кастомный __init__() вызывается вместо валидации.
+нужно явно вызывать super().__init__(**kwargs).
+теряются параметры конфигурации (strict, extra, контекст и т.п.).
+Рекомендуемая альтернатива: [model_post_init()][pydantic.main.BaseModel.model_post_init]
+python
+
+
+import logging
+from typing import Any
+from pydantic import BaseModel
+
+class MyModel(BaseModel):
+    id: int
+
+    def model_post_init(self, context: Any) -> None:
+        logging.info("Model initialized with id %d", self.id)
+Вызывается после валидации и инициализации.
+Сохраняет всю конфигурацию и поведение валидаторов.
+text
+
+
+
+## Ключевые методы и атрибуты
+
+| Метод / Атрибут | Описание |
+|------------------|----------|
+| [`model_dump()`][pydantic.main.BaseModel.model_dump] | Сериализация модели в словарь/JSON-совместимый формат |
+| [`model_validate()`][pydantic.main.BaseModel.model_validate] | Валидация и создание из dict или другого объекта (Python mode) |
+| [`model_validate_json()`][pydantic.main.BaseModel.model_validate_json] | Валидация и создание из JSON-строки |
+| [`model_validate_strings()`][pydantic.main.BaseModel.model_validate_strings] | Валидация с приведением строк к нужным типам |
+| [`model_construct()`][pydantic.main.BaseModel.model_construct] | Создание без валидации (быстро, но небезопасно) |
+| [`model_post_init()`][pydantic.main.BaseModel.model_post_init] | Хук после инициализации модели (после валидации) |
+
+## Рекомендации
+
+- Используйте `model_validate*` вместо кастомного `__init__()`, чтобы сохранить конфигурацию.
+- Для побочных действий используйте `model_post_init()` или валидаторы (`@field_validator(mode='after')`, `@model_validator(mode='after')`).
+- Избегайте `model_construct()`, если не уверены в данных — разрыв между производительностью валидации и `construct` в V2 минимален.
+
+

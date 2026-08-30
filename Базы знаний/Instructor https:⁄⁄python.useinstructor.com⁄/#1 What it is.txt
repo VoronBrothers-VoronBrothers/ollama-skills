@@ -1,0 +1,129 @@
+## What is Instructor?
+
+**Instructor** — это Python-библиотека для получения **структурированных и предсказуемых данных** из языковых моделей (LLM), таких как GPT-4 и Claude.
+
+- Работает как «форма», которую LLM заполняет по заданной структуре.
+- Обеспечивает валидацию, автоматическое исправление ошибок и стабильный формат вывода.
+
+### Интеграция в приложение
+
+```
+flowchart LR
+    A[Your Application] --> B[Instructor]
+    B --> C[LLM Provider]
+    C --> B
+    B --> A
+```
+
+---
+
+## Проблемы, которые решает Instructor
+
+- **Непредсказуемый вывод**: LLM может менять формат ответа при каждом вызове.
+- **Ошибки формата**: Сложно гарантировать валидность JSON или других структур.
+- **Необходимость ручной валидации**: Требуется проверка соответствия ожидаемому формату.
+
+### Решения от Instructor
+
+- **Определение структуры через Python-классы** (Pydantic).
+- **Гарантированное соответствие формата** на уровне API.
+- **Автоматическая валидация и исправление ошибок**.
+
+---
+
+## Пример использования
+
+```python
+import instructor
+from pydantic import BaseModel
+
+class Person(BaseModel):
+    name: str
+    age: int
+    city: str
+
+client = instructor.from_provider("openai/gpt-4o-mini")
+
+person = client.create(
+    response_model=Person,
+    messages=[
+        {"role": "user", "content": "Extract: John is 30 years old and lives in New York."}
+    ]
+)
+
+print(f"Name: {person.name}")  # John
+print(f"Age: {person.age}")    # 30
+print(f"City: {person.city}")  # New York
+```
+
+---
+
+## Ключевые концепции
+
+### 1. Response Models (Модели ответа)
+
+- Определяют структуру ожидаемого вывода.
+- Реализуются с помощью **Pydantic**.
+- Поддерживают описания полей (`Field(description=...)`), которые помогают LLM точнее извлекать данные.
+
+```python
+from pydantic import BaseModel, Field
+
+class User(BaseModel):
+    name: str = Field(description="The user's full name")
+    age: int = Field(description="The user's age in years")
+```
+
+### 2. Client Setup
+
+- Метод `instructor.from_provider()` подключает Instructor к LLM-провайдеру.
+- Автоматически обрабатывает конфигурацию провайдера.
+
+```python
+client = instructor.from_provider("openai/gpt-4o-mini")
+client = instructor.from_provider("anthropic/claude-3-5-haiku-latest")
+client = instructor.from_provider("google/gemini-3-flash")
+```
+
+### 3. Modes (Режимы)
+
+- Определяют, как Instructor взаимодействует с LLM для получения структурированного вывода.
+- Разные провайдеры поддерживают разные режимы.
+- Режим выбирается автоматически, но может быть задан вручную.
+
+---
+
+## Типичные сценарии использования
+
+- **Data extraction**: Извлечение структурированной информации из текста.
+- **Form filling**: Преобразование свободного текста в поля формы.
+- **Classification**: Классификация контента по заданным категориям.
+- **Content generation**: Генерация структурированного контента (статьи, описания товаров).
+- **API integration**: Приведение вывода LLM к формату, требуемому API.
+
+---
+
+## Часто задаваемые вопросы
+
+### Нужно ли знать Pydantic?
+- Не обязательно. Базовые шаблоны (как в примере) достаточны для старта.
+- Дополнительные возможности Pydantic можно освоить по мере необходимости.
+
+### Какой LLM-провайдер выбрать?
+- **OpenAI** — рекомендуется для новичков (надёжность и широкая поддержка).
+- Другие варианты: **Anthropic Claude**, **Google Gemini**, open-source модели.
+
+### Сложно ли освоить Instructor?
+- Нет. Если вы знакомы с Python-классами и API, освоение будет простым.
+- Основные концепции минималистичны.
+
+### Как Instructor отличается от других библиотек?
+- Сфокусирован исключительно на **структурированном выводе**.
+- Имеет простой и чистый API.
+- Не пытается быть универсальным фреймворком.
+
+---
+
+
+
+[Ключевые слова]: Instructor, LLM, structured outputs, Pydantic, OpenAI, Anthropic, Google Gemini, client.from_provider, response_model, validation, modes, data extraction, form filling, classification, API integration

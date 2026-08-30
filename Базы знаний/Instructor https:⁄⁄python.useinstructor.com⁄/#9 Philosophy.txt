@@ -1,0 +1,228 @@
+## Основные принципы философии Instructor
+
+- **Простота превосходит сложность**: инструмент должен упрощать
+сложное, не усложняя простое.
+- **Опора на знакомые технологии**: использует Pydantic как основу —
+никаких новых абстракций.
+- **Полный контроль над кодом**: «выход» всегда открыт; можно
+использовать raw API без фреймворка.
+- **Прозрачность**: видно, что именно отправляется в LLM и какие
+ответы приходят.
+- **Композиция вместо конфигурации**: строится через функции, а не
+YAML/декораторы/магию.
+- **Эволюционное развитие кода**: можно начинать с простого и
+постепенно добавлять валидацию, retry, streaming и т.д.
+
+---
+
+## Ключевые принципы
+
+### 1. Начинайте с того, что знают разработчики
+- Instructor **не изобретает** новых абстракций.
+- Основа — `pydantic.BaseModel`.
+- Пример:
+
+```python
+import instructor
+from pydantic import BaseModel
+
+class User(BaseModel):
+name: str
+age: int
+
+client = instructor.from_provider("openai/gpt-4.1-mini")
+_user = client.create(
+response_model=User,
+messages=[{"role": "user", "content": "Jane is 33"}],
+)
+```
+
+### 2. «Выход» всегда доступен
+- Instructor **не упаковывает**, а **патчит** существующие клиенты.
+- Можно переключиться на raw API в одну строку:
+
+```python
+# Без response_model — raw вызов
+client = instructor.from_provider("openai/gpt-4.1-mini")
+_result = client.create(messages=[{"role": "user", "content": "Say
+hello"}])
+
+# Или напрямую через OpenAI SDK
+from openai import OpenAI
+_raw_client = OpenAI()
+```
+
+### 3. Прозрачность вместо сокрытия
+- Можно получить сырую ответную часть от LLM:
+
+```python
+_raw_response = result._raw_response
+```
+
+- Поддержка логирования через `logfire`:
+
+```python
+instructor.logfire.configure()
+```
+
+### 4. Композиция вместо конфигурации
+- Нет YAML, декораторов или магии.
+- Пример композиции:
+
+```python
+class User(BaseModel):
+name: str
+age: int
+
+class Company(BaseModel):
+name: str
+industry: str
+
+class Analysis(BaseModel):
+user: User
+company: Company
+
+def extract_user(text: str) -> User:
+return client.create(response_model=User, messages=[{"role":
+"user", "content": text}])
+
+def extract_company(text: str) -> Company:
+return client.create(response_model=Company, messages=[{"role":
+"user", "content": text}])
+
+def analyze_email(email: str) -> Analysis:
+user = extract_user(email)
+company = extract_company(email)
+return Analysis(user=user, company=company)
+```
+
+### 5. Рост от простого к сложному
+- Без рефакторинга можно добавлять функционал:
+
+```python
+# День 1: базовый вызов
+_user = client.create(response_model=User, messages=[...])
+
+# День 7: валидация
+class User(BaseModel):
+name: str
+age: int
+
+@field_validator("age")
+def check_age(cls, value: int) -> int:
+if value < 0 or value > 150:
+raise ValueError("Invalid age")
+return value
+
+# День 14: retry
+_user = client.create(response_model=User, messages=[...],
+max_retries=3)
+
+# День 30: стриминг
+from instructor import Partial
+
+for partial in client.create(
+response_model=Partial[User],
+messages=[...],
+stream=True,
+):
+update_ui(partial)
+```
+
+---
+
+## Что Instructor **намеренно не делает**
+
+### ❌ Нет автоматической генерации промптов
+- Вы сами пишете системные и пользовательские сообщения:
+
+```python
+_messages = [
+{"role": "system", "content": "You are a precise data extractor"},
+{"role": "user", "content": f"Extract user from: {text}"},
+]
+```
+
+### ❌ Нет новых абстракций вроде «Agents», «Chains»
+- Вы используете свои доменные концепции:
+
+```python
+def search_web(query: str) -> str:
+return f"Results for {query}"
+
+def extract_user_with_search(query: str) -> User:
+search_results = search_web(query)
+return client.create(
+response_model=User,
+messages=[{"role": "user", "content": search_results}]
+)
+```
+
+### ❌ Нет vendor lock-in
+- Модели и логика — ваши, Instructor только подключает к LLM:
+
+```python
+def process_user(user: User) -> dict:
+return {"name": user.name.upper(), "adult": user.age >= 18}
+
+user = client.create(response_model=User, messages=[...])
+_result = process_user(user)  # Работает без Instructor
+```
+
+---
+
+## Итоговые преимущества
+
+- **Минимальный API**: освоение за минуты.
+- **Отсутствие привязки к провайдеру**: можно менять LLM или убрать
+библиотеку.
+- **Дебаггабельность**: видно, что происходит внутри.
+- **Композируемость**: строим сложное из простых функций.
+- **Pythonic стиль**: интуитивно понятный для Python-разработчиков.
+
+---
+
+## Пример реального использования
+
+```python
+from enum import Enum
+from typing import List
+import instructor
+from pydantic import BaseModel
+
+class Priority(str, Enum):
+HIGH = "high"
+MEDIUM = "medium"
+LOW = "low"
+
+class Ticket(BaseModel):
+title: str
+description: str
+priority: Priority
+estimated_hours: float
+
+def prioritize_tickets(tickets: List[Ticket]) -> List[Ticket]:
+return sorted(tickets, key=lambda t: (t.priority.value,
+-t.estimated_hours))
+
+client = instructor.from_provider("openai/gpt-4.1-mini")
+tickets = client.create(
+response_model=List[Ticket],
+messages=[{"role": "user", "content": "Parse these support
+tickets: ..."}],
+)
+_prioritized = prioritize_tickets(tickets)
+```
+
+---
+
+## Философия в одном предложении
+
+**Сделать структурированные выходы LLM настолько простыми, насколько
+это возможно — как определение Pydantic-модели.**
+
+[Ключевые слова]: instructor, pydantic, structured outputs, LLM
+integration, openai, response_model, partial streaming, validation,
+retry, observability, composition over configuration, no vendor
+lock-in, raw API access, pythonic, minimal abstraction
+```

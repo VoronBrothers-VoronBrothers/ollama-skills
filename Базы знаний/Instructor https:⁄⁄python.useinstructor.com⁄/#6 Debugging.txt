@@ -1,0 +1,182 @@
+## Отладка приложений с Instructor
+
+### Включение логов
+
+#### Быстрый режим отладки (рекомендуется)
+- Установите переменную окружения:
+```bash
+export INSTRUCTOR_DEBUG=1
+# или inline:
+INSTRUCTOR_DEBUG=1 python your_script.py
+```
+- Автоматически включает `DEBUG`-логи с correlation IDs (формат: `[a1b2c3d4]`)
+
+#### Ручная настройка логирования
+```python
+import logging
+
+logging.basicConfig(level=logging.DEBUG)
+logging.getLogger("instructor").setLevel(logging.DEBUG)
+```
+
+**Что логируется:**
+- Сырые ответы от провайдера (объекты provider-specific)
+- Выбор handler’а и режима (`mode`)
+- Попытки retry и ошибки парсинга
+- Корректировка `messages` при reask
+- Correlation ID для трассировки
+
+> **Совет:** Настройте форматтер с timestamp и именем модуля.
+
+---
+
+### Отслеживание потока выполнения через хуки
+
+Хуки позволяют вмешиваться в ключевые этапы без изменения ядра:
+
+```python
+from instructor.core.hooks import HookName
+
+client.on(HookName.COMPLETION_KWARGS, lambda **kw: print("KWARGS:", kw))
+client.on(HookName.COMPLETION_RESPONSE, lambda resp: print("RESPONSE:", type(resp)))
+client.on(HookName.PARSE_ERROR, lambda e: print("PARSE ERROR:", e))
+client.on(HookName.COMPLETION_LAST_ATTEMPT, lambda e: print("LAST ATTEMPT:", e))
+client.on(HookName.COMPLETION_ERROR, lambda e: print("COMPLETION ERROR:", e))
+```
+
+**Типичные сценарии использования:**
+- Запись `kwargs`, передаваемых провайдеру (включая mode/tools/response_format)
+- Сохранение сырых ответов для оффлайн-анализа
+- Анализ ошибок парсинга и изменений в `messages` при reask
+
+> **Важно:** Хукам, принимающим `**kwargs`, передаётся метаданный словарь `_instructor_meta` с полями:
+> - `attempt_number`
+> - `correlation_id`
+> - `mode`
+> - `response_model_name`
+
+Пример:
+```python
+client.on(HookName.COMPLETION_KWARGS, lambda **kw: print(kw.get("_instructor_meta")))
+```
+
+---
+
+### Анализ сырых ответов
+
+Парсинг возвращает модели с исходным ответом провайдера:
+
+```python
+model = client.create(...)
+raw = getattr(model, "_raw_response", None)
+print(raw)
+```
+
+**Для чего полезно:**
+- Проверка токен-использования (usage)
+- Версии модели и provider-specific метаданных
+
+---
+
+### Обработка ошибок и retry
+
+При исчерпании всех попыток вызывается `InstructorRetryException`:
+
+```python
+from instructor.core.exceptions import InstructorRetryException
+
+try:
+client.create(...)
+except InstructorRetryException as e:
+print("Attempts:", e.n_attempts)
+print("Last completion:", e.last_completion)
+print("Create kwargs:", e.create_kwargs)  # воспроизводимый ввод
+print("Failed attempts:", e.failed_attempts)  # [(attempt, exc, completion), ...]
+if hasattr(e, "trace_packet") and e.trace_packet:
+print("Trace packet:", e.trace_packet)
+```
+
+**Для мини-воспроизведения ошибки:**
+```python
+create_kwargs = {
+# вставить из e.create_kwargs
+}
+client.create(response_model=MyModel, **create_kwargs)
+```
+
+---
+
+### Строгий vs нестрогий парсинг
+
+| Параметр | Поведение |
+|---------|-----------|
+| `strict=True` | Требует точного соответствия схеме; выявляет расхождения на ранней стадии |
+| `strict=False` | Пропускает лишние поля, допускает нестрогие типы (например, `float` вместо `int`) |
+
+Пример:
+```python
+client.create(..., response_model=MyModel, strict=True)
+```
+
+---
+
+### Настройка retry-поведения
+
+Можно передать либо целое число (макс. попыток), либо объект `tenacity.Retrying`:
+
+```python
+from tenacity import Retrying, stop_after_attempt, stop_after_delay
+
+max_retries = Retrying(stop=stop_after_attempt(3) | stop_after_delay(10))
+client.create(..., max_retries=max_retries)
+```
+
+**Применение:** баланс между надёжностью и задержкой.
+
+---
+
+### Конвертация multimodal-сообщений
+
+При отправке изображений/аудио/PDF:
+- Автоматически вызывается `processing.multimodal.convert_messages`
+- Для отладки логируйте `messages` до и после конвертации через хуки
+- Убедитесь, что URI/типы медиа корректны
+
+---
+
+### Работа с кэшированием
+
+**Особенности:**
+- Успешные парсинг-результаты сохраняются в кэш; повторный вызов пропускает провайдер
+- Для отладки поведения провайдера — отключите кэш:
+```python
+client.create(..., cache=None)
+```
+
+---
+
+### Распространённые советы по устранению неполадок
+
+- Проверьте `response_model.model_json_schema()` на соответствие ожидаемому выводу провайдера.
+- Убедитесь, что `mode` поддерживается провайдером (несоответствие → ошибки парсинга).
+- Проверьте лимиты провайдера (макс. токены/длина ответа); неполные ответы вызывают специфичные исключения.
+- При использовании `MD_JSON` — убедитесь, что провайдер возвращает блок ```json.
+
+> **Для глубокой отладки:** добавьте хук, записывающий kwargs/responses/errors на диск с timestamp и correlation_id.
+
+---
+
+### Пример: локальная отладка без сети
+
+**Файл:** `examples/debugging/run.py`
+**Запуск:**
+```bash
+python examples/debugging/run.py
+```
+
+**Что делает скрипт:**
+- Включает DEBUG-логи для `instructor.*`
+- Патчит фейковый `create` с `mode=Mode.JSON`
+- Подключает хуки на вывод kwargs, типов ответа и ошибок парсинга
+- Парсит JSON в Pydantic-модель и печатает результат
+```

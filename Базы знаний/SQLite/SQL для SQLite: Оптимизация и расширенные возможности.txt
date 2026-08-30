@@ -1,0 +1,122 @@
+## SQL для SQLite: Оптимизация и расширенные возможности
+
+### 1. Индексы (INDEX)
+Для ускорения операций `SELECT` — без индексов SQLite выполняет полный перебор строк (table scan).
+
+- **Обычный индекс** — для часто используемых в `WHERE` и `JOIN` полях:
+  ```sql
+  CREATE INDEX idx_users_email ON users(email);
+  ```
+
+- **Составной индекс** — при частом совместном использовании нескольких полей в `WHERE`:
+  ```sql
+  CREATE INDEX idx_orders_user_date ON orders(user_id, order_date);
+  ```
+
+- **Уникальный индекс** — запрещает дубликаты и ускоряет поиск:
+  ```sql
+  CREATE UNIQUE INDEX idx_unique_token ON sessions(token);
+  ```
+
+---
+
+### 2. Изменение структуры: Миграции (`ALTER TABLE`)
+Применяется к уже существующим таблицам.
+
+- **Добавить колонку**:
+  ```sql
+  ALTER TABLE users ADD COLUMN phone TEXT;
+  ```
+
+- **Переименовать колонку**:
+  ```sql
+  ALTER TABLE users RENAME COLUMN username TO full_name;
+  ```
+
+- **Переименовать таблицу**:
+  ```sql
+  ALTER TABLE users RENAME TO app_users;
+  ```
+
+---
+
+### 3. Автоматизация: Триггеры (`TRIGGER`)
+Выполняют SQL-код автоматически при событиях `INSERT`, `UPDATE`, `DELETE`.
+
+- **Авто-обновление даты изменения**:
+  ```sql
+  CREATE TRIGGER update_user_timestamp
+  AFTER UPDATE ON users
+  BEGIN
+      UPDATE users SET updated_at = datetime('now') WHERE id = old.id;
+  END;
+  ```
+
+- **Логирование удалений**:
+  ```sql
+  CREATE TRIGGER log_deleted_users
+  AFTER DELETE ON users
+  BEGIN
+      INSERT INTO deleted_users_log (user_id, deleted_at) VALUES (old.id, datetime('now'));
+  END;
+  ```
+
+---
+
+### 4. Сложная аналитика: Оконные функции (`WINDOW`)
+Позволяют агрегировать данные по группам без схлопывания строк (в отличие от `GROUP BY`).
+
+- **Ранжирование (Top-N в группе)** — например, 3 самых дорогих заказа на пользователя:
+  ```sql
+  SELECT user_id, order_sum, order_date
+  FROM (
+      SELECT user_id, order_sum, order_date,
+             ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY order_sum DESC) as rank
+      FROM orders
+  ) WHERE rank <= 3;
+  ```
+
+- **Нарастающий итог / скользящее среднее**:
+  ```sql
+  SELECT user_id, order_sum,
+         SUM(order_sum) OVER (PARTITION BY user_id ORDER BY order_date) as running_total
+  FROM orders;
+  ```
+
+---
+
+### 5. Полнотекстовый поиск (FTS5)
+Виртуальные таблицы для быстрого поиска по тексту с учётом релевантности.
+
+- **Создание FTS5-таблицы**:
+  ```sql
+  CREATE VIRTUAL TABLE articles_search USING fts5(title, body);
+  ```
+
+- **Поиск с сортировкой по релевантности (BM25)** — чем меньше значение `bm25`, тем точнее совпадение:
+  ```sql
+  SELECT title, body
+  FROM articles_search
+  WHERE articles_search MATCH 'база данных ИЛИ sqlite'
+  ORDER BY bm25(articles_search) ASC;
+  ```
+
+---
+
+### 6. Умная вставка: Разрешение конфликтов (`ON CONFLICT`)
+Обработка дубликатов при `INSERT`.
+
+- **Игнорировать дубликат**:
+  ```sql
+  INSERT OR IGNORE INTO users (email) VALUES ('test@test.com');
+  ```
+
+- **UPSERT — обновить при конфликте**:
+  ```sql
+  INSERT INTO user_stats (user_id, visits) VALUES (1, 1)
+  ON CONFLICT(user_id) DO UPDATE SET visits = visits + 1;
+  ```
+
+---
+
+[Ключевые слова]: SQLite, индексы, ALTER TABLE, миграции, триггеры, оконные функции, FTS5, полнотекстовый поиск, BM25, ON CONFLICT, UPSERT, ROW_NUMBER, PARTITION BY, table scan

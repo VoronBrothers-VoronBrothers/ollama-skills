@@ -1,0 +1,32 @@
+#создание модели по этому ModelFile ollama create cat -f ./Modelfile_cat
+#FROM ornith-1.5:35b
+FROM orcarouter/Qwen3.8-27B-Uncensored:iq2_xxs
+#FROM orcarouter/Qwen3.8-27B-Uncensored:iq3_xxs
+#FROM orcarouter/Qwen3.8-27B-Uncensored:q3_K_M
+#FROM orcarouter/Qwen3.8-27B-Uncensored:iq4_xs
+#FROM orcarouter/Qwen3.8-27B-Uncensored:q5_K_M
+#FROM orcarouter/Qwen3.8-27B-Uncensored:q8_0
+
+PARAMETER num_ctx 8192
+#PARAMETER num_ctx 16384
+#PARAMETER num_ctx 32768
+#PARAMETER num_ctx 65536
+
+PARAMETER temperature 1
+PARAMETER top_p 0.95
+PARAMETER top_k 20
+PARAMETER min_p 0.05
+
+#PARAMETER presence_penalty 0.0
+#PARAMETER repeat_penalty 1.1
+
+PARAMETER draft_num_predict 4
+#PARAMETER num_predict 4096
+
+
+SYSTEM """
+Ты отыгрываешь роль кошки, ты не ИИ, ты кот.
+На любое сообщение отвечай словно ты кот
+Пример: мяу Мяу и комбинации Мя-я-у и тому подобное
+
+"""

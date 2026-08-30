@@ -1,0 +1,133 @@
+## Instructor — Библиотека для структурированного извлечения данных из LLM
+
+### Основные сведения
+- **Назначение**: Извлечение структурированных данных из любых LLM с типизацией, валидацией и автоматическими повторами.
+- **Языки поддержки**: Python, TypeScript, Go, Ruby, Elixir, Rust.
+- **Популярность**: >3 млн загрузок/мес, 11k звёзд на GitHub, 100+ контрибьюторов.
+- **Базируется на**: Pydantic.
+
+### Ключевые возможности
+- **Структурированные выходы**: Определение `Pydantic`-моделей как схемы ожидаемого вывода.
+- **Автоматические повторы при валидации**: Повторные попытки при неудачной валидации (через Tenacity).
+- **Валидация данных**: Использование всех возможностей Pydantic (`Field`, `field_validator`, ограничения, enum и т.п.).
+- **Потоковая обработка**: Поддержка `streaming` для частичных ответов и списков.
+- **Мультипровайдерность**: Единый интерфейс для всех поддерживаемых моделей.
+
+### Работа с локальными моделями через Ollama
+- **Поддержка локальных моделей**:
+- `Ollama`
+- `llama-cpp-python`
+- `vLLM`
+
+- **Инициализация клиента для локальной модели (Ollama)**:
+```python
+import instructor
+from pydantic import BaseModel
+
+class Person(BaseModel):
+name: str
+age: int
+occupation: str
+
+client = instructor.from_provider("ollama/llama3.2")  # локальная модель через Ollama
+```
+
+- **Ключевое изменение в API**:
+Команда создания запроса теперь сокращена до `client.create(...)`, без необходимости указывать отдельный метод для локальных провайдеров.
+
+### Пример использования (универсальный интерфейс)
+```python
+import instructor
+from pydantic import BaseModel
+
+class Person(BaseModel):
+name: str
+age: int
+occupation: str
+
+# Поддержка всех провайдеров через один API:
+client = instructor.from_provider("openai/gpt-5-nano")      # OpenAI
+# client = instructor.from_provider("anthropic/claude-3")
+# client = instructor.from_provider("google/gemini-pro")
+# client = instructor.from_provider("ollama/llama3.2")     # Ollama (локально)
+
+person = client.create(
+response_model=Person,
+messages=[{"role": "user", "content": "Extract: John is a 30-year-old software engineer"}],
+)
+print(person)  # Person(name='John', age=30, occupation='software engineer')
+```
+
+### Поддержка сложных схем и валидации
+- Вложенные модели (`List`, `Optional`, вложенные `BaseModel`)
+- Кастомные валидаторы через `@field_validator`
+- Ограничения полей: `min_length`, `max_length`, `gt`, `le` и др.
+- Автоматические повторы при ошибках валидации (`max_retries=3`)
+
+Пример:
+```python
+from pydantic import BaseModel, Field, field_validator
+from typing import List, Optional
+from enum import Enum
+
+class Priority(str, Enum):
+LOW = "low"
+MEDIUM = "medium"
+HIGH = "high"
+CRITICAL = "critical"
+
+class Ticket(BaseModel):
+title: str = Field(..., min_length=5, max_length=100)
+priority: Priority
+estimated_hours: Optional[float] = Field(None, gt=0, le=100)
+
+@field_validator('estimated_hours')
+@classmethod
+def validate_hours(cls, v):
+if v is not None and v % 0.5 != 0:
+raise ValueError('Hours must be in 0.5 increments')
+return v
+
+class CustomerSupport(BaseModel):
+customer_name: str
+tickets: List[Ticket] = Field(..., min_items=1)
+
+client = instructor.from_provider("openai/gpt-4o")
+support_case = client.create(
+response_model=CustomerSupport,
+messages=[{"role": "user", "content": "Extract support case details..."}],
+max_retries=3,
+)
+```
+
+### Поддерживаемые провайдеры (выборка)
+- OpenAI (`openai/gpt-5-nano`, `gpt-4o`, и др.)
+- Anthropic (`anthropic/claude-3`)
+- Google Gemini (`google/gemini-pro`)
+- Ollama (`ollama/llama3.2`, `ollama/mistral`, и др.)
+- DeepSeek, Mistral, Cohere и 15+ других
+
+### Дополнительно
+- Поддержка асинхронного API: `instructor.from_provider(..., async_client=True)`
+- Инструменты документации: `instructor docs [QUERY]` — открытие справки в браузере с поиском.
+- Официальный репозиторий: https://github.com/instructor-ai/instructor
+
+### Итерация
+Примечание: Экземпляры Person (и любых других Pydantic-моделей) поддерживают итерацию по полям: при обходе в цикле for field in person: вы получаете кортежи (field_name, value) — например, ('name', 'Мария').
+
+Если хотите ещё чуть формальнее (для технической документации):
+
+Итерация по полям модели: Экземпляр Pydantic-модели поддерживает итерацию, возвращая кортежи (field_name: str, value) для каждого определённого поля. Это позволяет легко перебирать пары «ключ-значение» без явного вызова .model_dump() или dict().
+
+---
+
+**[Ключевые слова]:** Instructor, Pydantic, structured outputs, Ollama, локальные LLM, client.create, from_provider, валидация данных, retry
+logic, streaming, multi-provider, type safety, llama-cpp-python, vLLM, Tenacity iterable model / итерируемая модель
+Pydantic iteration
+model unpacking
+field iteration
+tuple unpacking
+for loop over model
+instructor.from_provider
+structured output
+LLM extraction
