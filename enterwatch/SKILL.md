@@ -12,13 +12,11 @@ description: "Гарантия отправки сообщений самому 
 ## Запуск (1 раз в начале задачи)
 
 ```bash
-# уже запущен живой? тогда ничего не делаем
-tmux ls | grep -q enterwatch && pgrep -f "scripts/tmux_watch_enter.sh" >/dev/null \
-  && echo "enterwatch уже жив — старт не нужен" || {
-  tmux kill-session -t enterwatch 2>/dev/null   # убрать возможный мёртвый/остаток
-  tmux new-session -d -s enterwatch \
-    "bash /home/voron/.ollama/skills/enterwatch/scripts/tmux_watch_enter.sh"
-}
+# Режим замены: запуск ВСЕГДА заменяет живой экземпляр — скрипт сам убивает старый
+# процесс и стартует с полным 5ч. kill-session нужен от мёртвого остатка сессии.
+tmux kill-session -t enterwatch 2>/dev/null
+tmux new-session -d -s enterwatch \
+  "bash /home/voron/.ollama/skills/enterwatch/scripts/tmux_watch_enter.sh"
 ```
 
 Через ~3 секунды проверить, что жив:
@@ -36,7 +34,7 @@ sleep 3; tail -1 /tmp/tmux_watch_enter.log && tmux ls | grep enterwatch
 **Важно:** детект паузы через md5 хэша видимого экрана, НЕ через `pane_inactivity_time` — в tmux 3.6 она пустая/ненадёжная даже для idle-паней.
 
 ### Интервал
-`ENTERWATCH_INTERVAL=60 bash ...tmux_watch_enter.sh` — тестовый интервал 60с (по умолчанию 300). Остальные ENV: `ENTERWATCH_SESSION`, `ENTERWATCH_LOG`, `ENTERWATCH_STATE`, `ENTERWATCH_HASHFILE`, `ENTERWATCH_LOCK`.
+`ENTERWATCH_INTERVAL=60 bash ...tmux_watch_enter.sh` — тестовый интервал 60с (по умолчанию 300). Остальные ENV: `ENTERWATCH_SESSION`, `ENTERWATCH_LOG`, `ENTERWATCH_STATE`, `ENTERWATCH_HASHFILE`, `ENTERWATCH_LOCK`, `ENTERWATCH_PIDFILE`. Все ENV нужны при тесте с изолированными путями — иначе тестовый экземпляр убьёт production (replace-режим).
 
 ## Остановка (по завершении задачи)
 ```bash
@@ -46,4 +44,4 @@ tmux kill-session -t enterwatch 2>/dev/null; echo "enterwatch остановле
 
 ## Важно
 - Запускать ТОЛЬКО через tmux new-session: фоновый nohup/& из команды агента умирает сразу после завершения команды.
-- Защита от двойного запуска встроена: скрипт держит flock на `/tmp/tmux_watch_enter.lock` — второй экземпляр молча завершится сам, Enter не уйдёт дважды. Тем не менее стартовать чистым: сначала `tmux kill-session -t enterwatch`, потом новый старт (команда выше это учитывает).
+- Защита от двойного запуска встроена: скрипт держит flock на `/tmp/tmux_watch_enter.lock`; если новый старт не смог занять lock — он тихо сам завершится, Enter не уйдёт дважды. Replace-режим работает через pidfile + строгий ps-match (`bash <путь>`), wrapper-процессы под kill не попадают.
