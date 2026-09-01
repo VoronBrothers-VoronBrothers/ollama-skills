@@ -49,21 +49,27 @@ sleep 0.5
 # Если интерфейс лагает, первый Enter может уйти в пустоту.
 # Мы шлем серию разных сигналов отправки с микропаузами, чтобы "пробить" любой затуп.
 tmux send-keys -t "$S" C-[     # 0-й пауза чата, перехват ввода
-sleep 0.5
+sleep 2
 tmux send-keys -t "$S" C-m     # 1-й силовой ввод (нативный ASCII Carriage Return)
-sleep 0.5
+sleep 1
 tmux send-keys -t "$S" Enter   # 2-й ввод (эмуляция клавиши терминала)
+sleep 1
+tmux send-keys -t "$S" C-m     # 3-й ввод
 sleep 0.5
-tmux send-keys -t "$S" C-m     # 3-й ввод для закрепления
+tmux send-keys -t "$S" Enter   # 4-й
 sleep 0.5
-tmux send-keys -t "$S" Enter   # 4-й предфинальный пуф
-sleep 3
-tmux send-keys -t "$S" C-m     # 5-й контрольный выстрел №1
+tmux send-keys -t "$S" C-m     # 5-й
 sleep 0.5
-tmux send-keys -t "$S" C-m     # 6-й контрольный выстрел №2
-sleep 1                      # Технический затворник
-
+tmux send-keys -t "$S" C-m     # 6-й
+sleep 1
+tmux send-keys -t "$S" Enter   # 7-й бывает и он не срабатывает, вот зачем нужен enterwatch
+sleep 0.5
+sleep 1
+tmux paste-buffer -b "." -t "$S"
+tmux send-keys -t "$S" C-m
+tmux send-keys -t "$S" Enter
+tmux send-keys -t "$S" C-m
 # Чистим за собой память буфера
 tmux delete-buffer -b "space_task"
 
-echo "Команда отправлена серией залпов. Хомяки в безопасности."
+echo "Команда отправлена серией залпов."

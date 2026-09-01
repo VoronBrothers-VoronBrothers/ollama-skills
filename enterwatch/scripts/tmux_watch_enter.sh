@@ -7,7 +7,7 @@
 export LC_ALL=C.UTF-8
 S="${ENTERWATCH_SESSION:-orchestrator-this-is-your-own-tmux-send-pictures-here-with-task}"
 LOG=${ENTERWATCH_LOG:-/tmp/tmux_watch_enter.log}
-INTERVAL=${ENTERWATCH_INTERVAL:-300}   # проверка каждые N секунд (по умолчанию 5 минут)
+INTERVAL=${ENTERWATCH_INTERVAL:-150}   # проверка каждые N секунд
 DURATION=18000                          # работаем 5 часов (18000 секунд)
 STATE=${ENTERWATCH_STATE:-/tmp/tmux_watch_enter.errstate}    # последние «виденные» err-строки
 HASHF=${ENTERWATCH_HASHFILE:-/tmp/tmux_watch_enter.screencode} # md5 экрана прошлого цикла (детект паузы)
@@ -83,10 +83,10 @@ while [ "$(date +%s)" -lt "$END_TS" ]; do
   if [ -n "$INPUT" ]; then
     sleep 1
     if tmux send-keys -t "$S" C-m; then
-      log "цикл $CYCLE: ОТПРАВЛЕНО (Enter/C-m): $(printf '%s' "$INPUT_LINE" | sed 's/ *$//')"
+      log "цикл $CYCLE: warning ОТПРАВЛЕНО (Enter/C-m): $(printf '%s' "$INPUT_LINE" | sed 's/ *$//')"
       : > "$STATE"; rm -f "${STATE}.pinged"   # экран изменится — сброс err-state
     else
-      log "цикл $CYCLE: ошибка при отправке Enter"
+      log "цикл $CYCLE: err ошибка при отправке Enter"
     fi
   else
     # --- err-детект по истории + видимому экрану (только если ввод пуст) ---
@@ -94,7 +94,7 @@ while [ "$(date +%s)" -lt "$END_TS" ]; do
     PINGED="${STATE}.pinged"   # метка: на этот набор err точка уже отправлена
     ERRS=$( { printf '%s\n%s\n' "$SCREEN" "$HISTORY"; } | grep -E "$ERR_RE" | sort -u ) || true
     if [ -z "$ERRS" ] && [ ! -s "$STATE" ]; then
-      log "цикл $CYCLE: ок (ввод пуст, err нет)"
+      log "цикл $CYCLE: ок (ввод пуст, еррор нет)"
     fi
     if [ -n "$ERRS" ]; then
       PREV=$(cat "$STATE" 2>/dev/null)
@@ -103,7 +103,7 @@ while [ "$(date +%s)" -lt "$END_TS" ]; do
       fi
       if [ "$FROZEN" = "1" ] && [ ! -e "$PINGED" ]; then
         sleep 1
-        tmux send-keys -t "$S" "." C-m           && { touch "$PINGED"; log "цикл $CYCLE: err-сигнал на паузе → отправлена точка (state: $(head -c 60 "$STATE"))"; }           || log "цикл $CYCLE: ошибка при отправке точки"
+        tmux send-keys -t "$S" "[отработал перезапуск через enterwatch]" C-m           && { touch "$PINGED"; log "цикл $CYCLE: err-сигнал на паузе → отправлен перезапуск (state: $(head -c 60 "$STATE"))"; }           || log "цикл $CYCLE: ошибка при отправке точки"
       else
         [ "$FROZEN" = "1" ] || log "цикл $CYCLE: err в истории, но не пауза — ждём"
       fi

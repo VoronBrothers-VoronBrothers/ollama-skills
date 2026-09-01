@@ -1,6 +1,6 @@
 ---
 name: enterwatch
-description: "Гарантия отправки сообщений самому себе (selfshot): каждые 5 минут нажимает Enter в tmux-сессии оркестратора, если там лежит неотправленный текст. ОБЯЗАТЕЛЬНО подключить перед selfshot."
+description: "Гарантия отправки сообщений самому себе (selfshot): каждые Interval секунд. ОБЯЗАТЕЛЬНО подключить перед selfshot."
 ---
 
 # EnterWatch — страховка от «зависшего» ввода и пинг замороженного агента
@@ -26,7 +26,7 @@ sleep 3; tail -1 /tmp/tmux_watch_enter.log && tmux ls | grep enterwatch
 В логе должна быть свежая строка «запущен … интервал 300s». Если нет — запуск не удался (например, сессия уже была занята), повтори команду.
 
 ## Что делает скрипт
-Каждые **5 минут** (в течение **5 часов**) снимает экран tmux-сессии `orchestrator-this-is-your-own-tmux-send-pictures-here-with-task`, находит строку ввода (`│...│`). Если там лежит неотправленный текст — ждёт 1 секунду и шлёт `C-m` (Enter). Лог: `/tmp/tmux_watch_enter.log`.
+Каждые **N времени** (в течение **5 часов**) снимает экран tmux-сессии `orchestrator-this-is-your-own-tmux-send-pictures-here-with-task`, находит строку ввода (`│...│`). Если там лежит неотправленный текст — ждёт 1 секунду и шлёт `C-m` (Enter). Лог: `/tmp/tmux_watch_enter.log`.
 
 ### Пинг замороженного агента (err-детект)
 Если видимый экран не менялся с прошлого цикла (агент на паузе) И в истории (`capture-pane -pS -50`, т.е. видимая часть + скроллбек 50 строк) появились новые err-строки (`Err`/`Error`, `expected element type`, Traceback, Panic, Exception), скрипт шлёт `.` + Enter — сообщение дойдёт как `[из очереди]` и агент перезапустится с ошибкой на экране. Повторные пинги на тот же набор исключены (state-файл).
@@ -34,14 +34,11 @@ sleep 3; tail -1 /tmp/tmux_watch_enter.log && tmux ls | grep enterwatch
 **Важно:** детект паузы через md5 хэша видимого экрана, НЕ через `pane_inactivity_time` — в tmux 3.6 она пустая/ненадёжная даже для idle-паней.
 
 ### Интервал
-`ENTERWATCH_INTERVAL=60 bash ...tmux_watch_enter.sh` — тестовый интервал 60с (по умолчанию 300). Остальные ENV: `ENTERWATCH_SESSION`, `ENTERWATCH_LOG`, `ENTERWATCH_STATE`, `ENTERWATCH_HASHFILE`, `ENTERWATCH_LOCK`, `ENTERWATCH_PIDFILE`. Все ENV нужны при тесте с изолированными путями — иначе тестовый экземпляр убьёт production (replace-режим).
+`ENTERWATCH_INTERVAL=60 bash ...tmux_watch_enter.sh` — тестовый интервал 60с. Остальные ENV: `ENTERWATCH_SESSION`, `ENTERWATCH_LOG`, `ENTERWATCH_STATE`, `ENTERWATCH_HASHFILE`, `ENTERWATCH_LOCK`, `ENTERWATCH_PIDFILE`. Все ENV нужны при тесте с изолированными путями — иначе тестовый экземпляр убьёт production (replace-режим).
+- Изначально скрипт запускался с интервалом 300 секунд (историческая справка).
 
-## Остановка (по завершении задачи)
-```bash
-tmux kill-session -t enterwatch 2>/dev/null; echo "enterwatch остановлен"
-```
-Не оставлять «на потом»: если задача закончилась — сессию закрыть. После перезапуска системы скрипт сам не стартует (это правильно).
 
 ## Важно
 - Запускать ТОЛЬКО через tmux new-session: фоновый nohup/& из команды агента умирает сразу после завершения команды.
 - Защита от двойного запуска встроена: скрипт держит flock на `/tmp/tmux_watch_enter.lock`; если новый старт не смог занять lock — он тихо сам завершится, Enter не уйдёт дважды. Replace-режим работает через pidfile + строгий ps-match (`bash <путь>`), wrapper-процессы под kill не попадают.
+- Скрипт самостоятельно не выключаем.
