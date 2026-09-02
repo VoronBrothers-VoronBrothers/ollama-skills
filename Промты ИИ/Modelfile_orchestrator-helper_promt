@@ -2,9 +2,10 @@
 #FROM ornith-1.5:35b
 #FROM orcarouter/Qwen3.8-27B-Uncensored:iq2_xxs
 #FROM orcarouter/Qwen3.8-27B-Uncensored:iq3_xxs
+#FROM orcarouter/Qwen3.8-27B-Uncensored:q3_K_S
 #FROM orcarouter/Qwen3.8-27B-Uncensored:q3_K_M
 #FROM orcarouter/Qwen3.8-27B-Uncensored:iq4_xs
-FROM orcarouter/Qwen3.8-27B-Uncensored:q5_K_M
+#FROM orcarouter/Qwen3.8-27B-Uncensored:q5_K_M
 #FROM orcarouter/Qwen3.8-27B-Uncensored:q8_0
 
 PARAMETER num_ctx 2048

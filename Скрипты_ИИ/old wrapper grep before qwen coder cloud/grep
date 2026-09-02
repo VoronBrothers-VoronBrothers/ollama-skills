@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# grep -> ripgrep wrapper (deployed: /usr/local/bin/grep)
+# Real GNU grep kept at /bin/grep for fallback / reference.
+set -u
+
+a=( "$@" )
+out=()
+n=${#a[@]}
+i=0
+pat_done=0          # implicit single pattern already emitted as `-e`?
+
+while [ $i -lt $n ]; do
+  t="${a[$i]}"
+  case "$t" in
+    -E|--extended-regexp|-G|--basic-regexp)
+      i=$((i+1)); continue ;;                       # engine selector -> drop (rg default matches common ERE/BRE usage)
+
+    -e|--regexp|-f)                                 # value-taking option, pass through with its value
+      out+=("$t")
+      if [ $((i+1)) -lt $n ]; then out+=("${a[$((i+1))]}"); i=$((i+2)); else i=$((i+1)); fi
+      continue ;;
+
+    --*=*)                                          # self-contained long option with '=' (e.g. --line-regexp, --exclude-dir=...)
+      out+=("$t"); i=$((i+1)); continue ;;
+
+    -*)                                             # other options (-P, -n, --color, etc.) pass through verbatim
+      out+=("$t"); i=$((i+1)); continue ;;
+
+    *)                                              # bare positional: 1st = PATTERN (emit as -e), rest = FILES (verbatim)
+      if [ "$pat_done" = 0 ]; then
+        out+=("-e" "$t"); pat_done=1
+      else
+        out+=("$t")
+      fi
+      i=$((i+1)) ;;
+  esac
+done
+
+# Preserve GNU grep exit-code contract: 0 match, 1 no-match, 2 error.
+exec rg "${out[@]}"

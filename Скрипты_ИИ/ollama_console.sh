@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Открывает консоль (konsole), запускает `ollama` (TUI), выбирает модель
-# (стрелка вправо → ввод имени → Enter), затем /think (Enter, Down×2, Enter),
+# (стрелка вправо → ввод имени → Enter), затем
 # Shift+Tab (полный доступ) и вводит задание.
+# Режим low thinking теперь по умолчанию: блок /think + Down×2 удалён.
 # ВАЖНО: ищем НОВОЕ окно (дифф "до/после" запуска), а не первое окно с классом
 # konsole — иначе при запуске из уже открытой konsole ввод улетит в старое окно.
 set -euo pipefail
@@ -73,42 +74,22 @@ xdotool key --window "$WIN" Right
 sleep 1
 
 # 7. Вводим имя модели
-xdotool type --window "$WIN" --delay 80 "qwen3.8-orchestrator"
+xdotool type --window "$WIN" --delay 80 "orchestrator"
 sleep 1
 
 # 8. Enter (выбираем модель)
 xdotool key --window "$WIN" Return
 sleep 2
 
-# 9. Вводим /think
-xdotool type --window "$WIN" --delay 80 "/think"
-sleep 1
-
-# 10. Enter (подтверждаем /think)
-xdotool key --window "$WIN" Return
-sleep 1
-
-# 11. Стрелка вниз
-xdotool key --window "$WIN" Down
-sleep 0.5
-
-# 12. Ещё стрелка вниз
-xdotool key --window "$WIN" Down
-sleep 0.5
-
-# 13. Enter (выбираем пункт) low thinking (режим обдумывания сокращённый)
-xdotool key --window "$WIN" Return
-sleep 1
-
-# 14. Shift+Tab — предоставление полного доступа
+# 9. Shift+Tab — предоставление полного доступа
 xdotool key --window "$WIN" shift+Tab
 sleep 1
 
-# 15. Вводим текст задания (TASK_PROMPT задан выше; можно переопределить через env)
+# 10. Вводим текст задания (TASK_PROMPT задан выше; можно переопределить через env)
 xdotool type --window "$WIN" --delay 80 "$TASK_PROMPT"
 sleep 1
 
-# 16. Enter (отправляем)
+# 11. Enter (отправляем)
 xdotool key --window "$WIN" Return
 sleep 1
 
