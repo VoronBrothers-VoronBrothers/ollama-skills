@@ -7,8 +7,8 @@
 export LC_ALL=C.UTF-8
 S="${ENTERWATCH_SESSION:-orchestrator-this-is-your-own-tmux-send-pictures-here-with-task}"
 LOG=${ENTERWATCH_LOG:-/tmp/tmux_watch_enter.log}
-INTERVAL=${ENTERWATCH_INTERVAL:-150}   # проверка каждые N секунд
-DURATION=18000                          # работаем 5 часов (18000 секунд)
+INTERVAL=${ENTERWATCH_INTERVAL:-250}   # проверка каждые N секунд
+DURATION=28000                          # работаем ? часов (по умолчанию было: 18000 секунд)
 STATE=${ENTERWATCH_STATE:-/tmp/tmux_watch_enter.errstate}    # последние «виденные» err-строки
 HASHF=${ENTERWATCH_HASHFILE:-/tmp/tmux_watch_enter.screencode} # md5 экрана прошлого цикла (детект паузы)
 
