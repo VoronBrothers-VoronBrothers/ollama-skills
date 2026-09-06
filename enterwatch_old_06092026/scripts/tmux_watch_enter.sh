@@ -1,25 +1,21 @@
 #!/bin/bash
 # tmux_watch_enter.sh — раз в INTERVAL секунд проверяем сессию оркестратора.
 # 1) Если в строке ввода лежит неотправленный текст — ждём 1 секунду и нажимаем Enter.
-# 2) Если экран заканчивается на строку-маркер размышления «Thought» (бывало с буллетом «•», теперь без него)
-#    и модель зависла — отправляем "." + Enter.
-# 3) Если экран заканчивается на фразу «Tell the model what to do instead» и модель зависла — отправляем "." + Enter.
-# 4) Если агент на ПАУЗЕ (экран не меняется) и есть ошибки в истории — отправляем пинг-сообщение.
+# 2) Если экран заканчивается на "• Thought" (модель думает, но не выдает результат) — отправляем "." + Enter.
+# 3) Если агент на ПАУЗЕ (экран не меняется) и есть ошибки в истории — отправляем пинг-сообщение.
 
 export LC_ALL=C.UTF-8
 S="${ENTERWATCH_SESSION:-orchestrator-this-is-your-own-tmux-send-pictures-here-with-task}"
 LOG=${ENTERWATCH_LOG:-/tmp/tmux_watch_enter.log}
-INTERVAL=${ENTERWATCH_INTERVAL:-40}   # проверка каждые N секунд
+INTERVAL=${ENTERWATCH_INTERVAL:-60}   # проверка каждые N секунд
 DURATION=28000                          # время работы в секундах
 STATE=${ENTERWATCH_STATE:-/tmp/tmux_watch_enter.errstate}    # последние «виденные» err-строки
 HASHF=${ENTERWATCH_HASHFILE:-/tmp/tmux_watch_enter.screencode} # md5 экрана прошлого цикла
 STREAKF=${ENTERWATCH_STREAKFILE:-/tmp/tmux_watch_enter.streak}   # счётчик одинаковых кадров подряд
 MIN_FRAMES=${ENTERWATCH_MINFRAMES:-3}  # сколько одинаковых кадров нужно для FROZEN (дефолт 3 ≈ 2 мин)
 
-# Регулярка на ошибки: только вхождения err / Error / error
-# (Traceback, Panic, Exception и т.п. НЕ считаются — по требованию пользователя)
-ERR_RE='err|Error|error'
-
+# Регулярка на типовые ошибки
+ERR_RE='(^|[[:space:]])Err?([[:space:]]|$)|[Ee]rror|expected element type|[Tt]raceback|[Pp]anic|[Ee]xception'
 
 log() { echo "$(date '+%Y-%m-%d %H:%M:%S') $*" >> "$LOG"; }
 
@@ -30,17 +26,7 @@ CANDS=$( { cat "$PIDF" 2>/dev/null; pgrep -f "tmux_watch_enter\.sh"; } | grep -v
 OLDS=""
 for c in $CANDS; do
   A1=$(ps -p "$c" -o args= 2>/dev/null)
-  [ -z "$A1" ] && continue
-  # Точное совпадение: bash <абсолютный путь>
-  if [ "$A1" = "bash $SELF" ]; then OLDS="$OLDS$c"; continue; fi
-  # Запуск по относительному пути (bash ./tmux_watch_enter.sh из scripts/):
-  # резолвим через cwd кандидата и сравниваем с SELF.
-  case "$A1" in
-    *" tmux_watch_enter.sh")
-      CW=$(readlink -f "/proc/$c/cwd" 2>/dev/null) || true
-      [ "$CW/tmux_watch_enter.sh" = "$SELF" ] && OLDS="$OLDS$c"
-      ;;
-  esac
+  [ "$A1" = "bash $SELF" ] && OLDS="$OLDS$c"
 done
 if [ -n "${OLDS:-}" ]; then
   for OLD in $OLDS; do pkill -TERM -P "$OLD" 2>/dev/null || true; done
@@ -89,15 +75,12 @@ while [ "$(date +%s)" -lt "$END_TS" ]; do
 
   # --- Детект паузы (хэширование экрана, streak-based) ---
   PREV_HASH=$(cat "$HASHF" 2>/dev/null) || true
-  # HASHSCREEN: экран без анимируемого хрома (спиннер "Working.."), иначе md5 не совпадёт
-  # между циклами и FROZEN=1 недостижим даже при зависании модели. Строку ввода целиком
-  # заменяем на константу, но ЕЁ ТЕКСТ добавляем в хэш отдельно ($INPUT): мигающий курсор █
-  # не ломает хэш (он стирается пробелами), а вот набор текста сбрасывает streak —
-  # иначе enterwatch шлёт Enter посреди фразы, пока пользователь ещё печатает.
+  # HASHSCREEN: экран без анимируемого хрома (спиннер "Working..", мигающий курсор в строке ввода),
+  # иначе md5 не совпадёт между циклами и FROZEN=1 недостижим даже при зависании модели.
   HASHSCREEN=$(printf '%s\n' "$SCREEN" \
     | grep -vE '^[[:space:]]*Working\.([.]){0,3}[[:space:]]*$' \
     | sed -E 's/[[:space:]]*│.*$/INPUTLINE/')
-  CUR_HASH=$(printf '%s|IN:%s\n' "$HASHSCREEN" "$INPUT" | md5sum | awk '{print $1}')
+  CUR_HASH=$(printf '%s' "$HASHSCREEN" | md5sum | awk '{print $1}')
   # Streak: сколько кадров подряд идентичны (нужно >= MIN_FRAMES для FROZEN)
   if [ -n "$PREV_HASH" ] && [ "$PREV_HASH" = "$CUR_HASH" ]; then
     STREAK=$(( $(cat "$STREAKF" 2>/dev/null || echo 1) + 1 ))
@@ -108,14 +91,16 @@ while [ "$(date +%s)" -lt "$END_TS" ]; do
   FROZEN=0; [ "$STREAK" -ge "$MIN_FRAMES" ] && FROZEN=1
   printf '%s' "$CUR_HASH" > "$HASHF"
 
-  # --- ЛОГИКА: зависание на "Thought" или "Tell the model what to do instead" ---
+  # --- ЛОГИКА: зависание на "Thought" ---
+  # Срабатывает только если экран ЗАМРОЖЕН (модель не печатает) И маркер «• Thought» —
+  # это САМАЯ ПОСЛЕДНЯЯ непустая строка контента (всё до хрома TUI ╭...╮). Если ниже
+  # этой метки модель/я уже что-то напечатали, последняя строка станет текстом ответа —
+  # и пинг не пойдёт. Точка отправляется один раз на конкретное состояние экрана
+  # (rate-limit по hash в ${STATE}.thought).
   TH_STATE="${STATE}.thought"
-  TELL_STATE="${STATE}.tell_model"
   if [ "$FROZEN" = "1" ]; then
     LAST_CONTENT=$(echo "$SCREEN" | sed '/^╭/,$d' | grep -vE '^[[:space:]]*$' | tail -n 1)
-
-    # 1) Маркер "Thought" (с буллетом или без)
-    if echo "$LAST_CONTENT" | grep -qE '^[[:space:]]*([•●][[:space:]]+)?[Tt]h(o|in)[a-z]*$'; then
+    if echo "$LAST_CONTENT" | grep -qE '^[[:space:]]*(•|●)[[:space:]]+Thought'; then
       PREVT=$(cat "$TH_STATE" 2>/dev/null) || true
       if [ "$CUR_HASH" != "$PREVT" ]; then
         sleep 1
@@ -127,23 +112,7 @@ while [ "$(date +%s)" -lt "$END_TS" ]; do
         fi
       fi
     else
-      rm -f "$TH_STATE"
-    fi
-
-    # 2) Маркер "Tell the model what to do instead" (регистронезависимо, точка опциональна)
-    if echo "$LAST_CONTENT" | grep -qiF "Tell the model what to do instead"; then
-      PREVT=$(cat "$TELL_STATE" 2>/dev/null) || true
-      if [ "$CUR_HASH" != "$PREVT" ]; then
-        sleep 1
-        if tmux send-keys -t "$S" "." C-m; then
-          printf '%s' "$CUR_HASH" > "$TELL_STATE"
-          log "цикл $CYCLE: завис на Tell the model... (экран заморожен) → отправлена точка"
-        else
-          log "цикл $CYCLE: err ошибка при отправке точки (Tell the model)"
-        fi
-      fi
-    else
-      rm -f "$TELL_STATE"
+      rm -f "$TH_STATE"   # контента в хвосте больше нет — старый rate-limit не нужен
     fi
   fi
 
@@ -163,8 +132,7 @@ while [ "$(date +%s)" -lt "$END_TS" ]; do
   else
     # --- Err-детект по истории + видимому экрану (только если ввод пуст и не сработал Thought) ---
     PINGED="${STATE}.pinged"
-    # Детект по последним 8 строкам видимого экрана (не весь скроллбек — меньше шума из истории)
-    ERRS=$(echo "$SCREEN" | tail -n 8 | grep -E "$ERR_RE") || true
+    ERRS=$( { printf '%s\n%s\n' "$SCREEN" "$HISTORY"; } | grep -E "$ERR_RE" | sort -u ) || true
 
     if [ -z "$ERRS" ] && [ ! -s "$STATE" ]; then
       log "цикл $CYCLE: ок (ввод пуст, еррор нет, thought чист)"
@@ -177,7 +145,7 @@ while [ "$(date +%s)" -lt "$END_TS" ]; do
       fi
       if [ "$FROZEN" = "1" ] && [ ! -e "$PINGED" ]; then
         sleep 1
-        tmux send-keys -t "$S" "[отработал перезапуск через enterwatch из-за ерр/еррор в истории]" C-m && { touch "$PINGED"; log "цикл $CYCLE: err-сигнал на паузе → отправлен перезапуск"; } || log "цикл $CYCLE: ошибка при отправке точки"
+        tmux send-keys -t "$S" "[отработал перезапуск через enterwatch]" C-m && { touch "$PINGED"; log "цикл $CYCLE: err-сигнал на паузе → отправлен перезапуск"; } || log "цикл $CYCLE: ошибка при отправке точки"
       else
         [ "$FROZEN" = "1" ] || log "цикл $CYCLE: err в истории, но не пауза — ждём"
       fi
