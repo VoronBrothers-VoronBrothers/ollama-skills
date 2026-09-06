@@ -11,6 +11,8 @@ INTERVAL=${ENTERWATCH_INTERVAL:-60}   # проверка каждые N секу
 DURATION=28000                          # время работы в секундах
 STATE=${ENTERWATCH_STATE:-/tmp/tmux_watch_enter.errstate}    # последние «виденные» err-строки
 HASHF=${ENTERWATCH_HASHFILE:-/tmp/tmux_watch_enter.screencode} # md5 экрана прошлого цикла
+STREAKF=${ENTERWATCH_STREAKFILE:-/tmp/tmux_watch_enter.streak}   # счётчик одинаковых кадров подряд
+MIN_FRAMES=${ENTERWATCH_MINFRAMES:-3}  # сколько одинаковых кадров нужно для FROZEN (дефолт 3 ≈ 2 мин)
 
 # Регулярка на типовые ошибки
 ERR_RE='(^|[[:space:]])Err?([[:space:]]|$)|[Ee]rror|expected element type|[Tt]raceback|[Pp]anic|[Ee]xception'
@@ -68,7 +70,7 @@ while [ "$(date +%s)" -lt "$END_TS" ]; do
   INPUT_LINE=$(echo "$SCREEN" | grep '^│.*│$' | sed 's/^│//; s/│$//' | sed 's/█//g')
   INPUT=$(printf '%s' "$INPUT_LINE" | tr -d '[:space:]')
 
-  # --- Детект паузы (хэширование экрана) ---
+  # --- Детект паузы (хэширование экрана, streak-based) ---
   PREV_HASH=$(cat "$HASHF" 2>/dev/null) || true
   # HASHSCREEN: экран без анимируемого хрома (спиннер "Working..", мигающий курсор в строке ввода),
   # иначе md5 не совпадёт между циклами и FROZEN=1 недостижим даже при зависании модели.
@@ -76,18 +78,26 @@ while [ "$(date +%s)" -lt "$END_TS" ]; do
     | grep -vE '^[[:space:]]*Working\.([.]){0,3}[[:space:]]*$' \
     | sed -E 's/[[:space:]]*│.*$/INPUTLINE/')
   CUR_HASH=$(printf '%s' "$HASHSCREEN" | md5sum | awk '{print $1}')
-  FROZEN=0; [ -n "$PREV_HASH" ] && [ "$PREV_HASH" = "$CUR_HASH" ] && FROZEN=1
+  # Streak: сколько кадров подряд идентичны (нужно >= MIN_FRAMES для FROZEN)
+  if [ -n "$PREV_HASH" ] && [ "$PREV_HASH" = "$CUR_HASH" ]; then
+    STREAK=$(( $(cat "$STREAKF" 2>/dev/null || echo 1) + 1 ))
+  else
+    STREAK=1
+  fi
+  printf '%s' "$STREAK" > "$STREAKF"
+  FROZEN=0; [ "$STREAK" -ge "$MIN_FRAMES" ] && FROZEN=1
   printf '%s' "$CUR_HASH" > "$HASHF"
 
-  # --- НОВАЯ ЛОГИКА: зависание на "Thought" ---
-  # Срабатывает только если экран ЗАМРОЖЕН (модель не печатает) И в хвосте контента —
-  # последних непустых строках ДО хрома TUI ╭...╮ (спиннер Working..., рамка ввода и
-  # статусбар отрезаны) — виден маркер «• Thought». Точка отправляется один раз на
-  # конкретное состояние экрана (rate-limit по hash в ${STATE}.thought).
+  # --- ЛОГИКА: зависание на "Thought" ---
+  # Срабатывает только если экран ЗАМРОЖЕН (модель не печатает) И маркер «• Thought» —
+  # это САМАЯ ПОСЛЕДНЯЯ непустая строка контента (всё до хрома TUI ╭...╮). Если ниже
+  # этой метки модель/я уже что-то напечатали, последняя строка станет текстом ответа —
+  # и пинг не пойдёт. Точка отправляется один раз на конкретное состояние экрана
+  # (rate-limit по hash в ${STATE}.thought).
   TH_STATE="${STATE}.thought"
   if [ "$FROZEN" = "1" ]; then
-    CONTENT_TAIL=$(echo "$SCREEN" | sed '/^╭/,$d' | sed '/^$/d' | tail -n 3)
-    if echo "$CONTENT_TAIL" | grep -qE '^[[:space:]]*(•|●)[[:space:]]+Thought'; then
+    LAST_CONTENT=$(echo "$SCREEN" | sed '/^╭/,$d' | grep -vE '^[[:space:]]*$' | tail -n 1)
+    if echo "$LAST_CONTENT" | grep -qE '^[[:space:]]*(•|●)[[:space:]]+Thought'; then
       PREVT=$(cat "$TH_STATE" 2>/dev/null) || true
       if [ "$CUR_HASH" != "$PREVT" ]; then
         sleep 1
@@ -103,14 +113,18 @@ while [ "$(date +%s)" -lt "$END_TS" ]; do
     fi
   fi
 
-  # --- Enter: неотправленный текст в строке ввода ---
+  # --- Enter: неотправленный текст в строке ввода (только если FROZEN — два md5 совпали) ---
   if [ -n "$INPUT" ]; then
-    sleep 1
-    if tmux send-keys -t "$S" C-m; then
-      log "цикл $CYCLE: warning ОТПРАВЛЕНО (Enter/C-m): $(printf '%s' "$INPUT_LINE" | sed 's/ *$//')"
-      : > "$STATE"; rm -f "${STATE}.pinged"
+    if [ "$FROZEN" = "1" ]; then
+      sleep 1
+      if tmux send-keys -t "$S" C-m; then
+        log "цикл $CYCLE: warning ОТПРАВЛЕНО (Enter/C-m): $(printf '%s' "$INPUT_LINE" | sed 's/ *$//')"
+        : > "$STATE"; rm -f "${STATE}.pinged"
+      else
+        log "цикл $CYCLE: err ошибка при отправке Enter"
+      fi
     else
-      log "цикл $CYCLE: err ошибка при отправке Enter"
+      log "цикл $CYCLE: текст во вводе но не FROZEN (md5 различается) — ждём ещё цикл"
     fi
   else
     # --- Err-детект по истории + видимому экрану (только если ввод пуст и не сработал Thought) ---
