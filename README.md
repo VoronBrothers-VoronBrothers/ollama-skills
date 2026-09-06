@@ -2,11 +2,13 @@
 
 Скиллы Ollama (`SKILL.md`) для локального ИИ-оркестратора + вспомогательные скрипты, промты и база знаний.
 
-## Скиллы (17)
+## Скиллы (20)
 
 | Скилл | Назначение |
 |---|---|
+| ai-solid-brain | Спросить ИИ-чат в Chrome: Квен(Qwen), Дипсик(DeepSeek) — с приоритетом выбора чата и копированием ответа |
 | browser-chat | Чат с DeepSeek (Дипсик) по визуальному алгоритму: скриншоты → свои клики/ввод глазами, скрипты — только fallback. Также — FALLBACK интернет-поиск, когда web_search/web_fetch/webq упёрлись |
+| carbonyl | Терминальный браузер на Chromium (Carbonyl) для тяжёлых JS-сайтов: когда `webq`/`w3m` возвращают пустое или обрезанное содержимое (SPA, React, Vue); рендерит страницу целиком через tmux-сессию |
 | deepseek | Спросить deepseek в чате Chrome: задать вопрос, дождаться ответа и скопировать его (совет/второе мнение) |
 | edit-tool | Правильное использование инструмента edit: абсолютные пути и `..`, `~` раскрывается в home, относительный — от cwd; точечные правки без retries |
 | enterwatch | Гарантия отправки сообщений самому себе (selfshot): каждые 5 минут жмёт Enter в tmux-сессии оркестратора, если там лежит неотправленный текст. ОБЯЗАТЕЛЬНО подключить перед selfshot |
@@ -22,18 +24,22 @@
 | show-image | Отправка изображения в собственное TUI-терминал оркестратора: следующий ход приходит со скриншотом, без нового окна |
 | skill-creator | Создание и улучшение скиллов (SKILL.md), помощь с установкой |
 | tmux | Управление интерактивными сессиями (ollama, REPL, TUI): защита от гонок, зависаний и искажения контекста |
+| tmux-helper | Облачные ИИ-помощники через ollama TUI в tmux (gemma4:cloud, gpt-oss:120b-cloud и др.): пошаговый запуск send-keys'ами; несколько параллельных сессий на разные задачи |
 | webq | Штатный локальный веб-поиск и чтение страниц (`w3m` + DuckDuckGo) без API-ключей. Штатный инструмент интернет-поиска, deepseek — только если он не справился |
 
 ## Структура
 
 ```
-<скилл>/<SKILL.md>            # 17 скиллов — копируются в ~/.ollama/skills/
+<скилл>/<SKILL.md>            # 20 скиллов — копируются в ~/.ollama/skills/
+find, grep                    # обёртки-команды (find→fdfind, grep→ripgrep), архив копий; рабочие версии — в Скрипты_ИИ/
+enterwatch_old_*/             # архив старых версий enterwatch
 Промты ИИ/                    # Modelfile'ы и куски промтов для моделей оркестратора/помощников
 ├── Modelfile_orchestrator_promt, _naked, _self-reflection, orchestrator-helper_promt ...
 └── Куски/                    #   отдельные блоки (Дипсик.txt и др.)
 Скрипты_ИИ/                   # скрипты оркестратора (не в ~/.ollama/skills/)
 ├── browser_chat/             #   автоскрипты browser-chat: full_cycle.sh, open_url.sh, scroll_capture.sh,
 │                             #   copy_vision.sh, win_fix.sh, save_session.sh; sessions/, urls/, archive/
+├── find, grep               #   обёртки-команды (find→fdfind, grep→ripgrep)
 ├── clip_hold.py  focus_consolidate.sh  ollama_console.sh
 ├── quant_switch.sh  restart_self.sh  show_image.sh
 └── top_words.py
@@ -43,7 +49,8 @@ Modelfile_qwen38_orchestrator_promt_2   # Modelfile оркестратора (qw
 
 ## Установка
 
-- Скиллы: скопировать каждый каталог в `~/.ollama/skills/`.
+- Скиллы: скопировать каждый каталог в `~/.ollama/skills/`. (Архивные папки вида `*_old_*` — не скиллы, копировать не нужно.)
+- Обёртки `find`, `grep`: поставить нужную версию из `Скрипты_ИИ/find|grep` в PATH (зависимости: `fdfind`/`fd`, `ripgrep`).
 - Скрипт веб-поиска: `webq/webq.sh` → `~/.local/bin/webq` (`chmod +x`). Зависимости: `w3m`, `lynx`, `python3`; API-ключи не нужны.
 - `Скрипты_ИИ/` — по необходимости, в рабочие пути оркестратора (не в `~/.ollama/skills/`).
 
