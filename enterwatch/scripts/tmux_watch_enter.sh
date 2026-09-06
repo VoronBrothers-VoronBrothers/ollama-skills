@@ -69,6 +69,9 @@ while [ "$(date +%s)" -lt "$END_TS" ]; do
   # Строка ввода (в рамке │...│)
   INPUT_LINE=$(echo "$SCREEN" | grep '^│.*│$' | sed 's/^│//; s/│$//' | sed 's/█//g')
   INPUT=$(printf '%s' "$INPUT_LINE" | tr -d '[:space:]')
+  # Очищаем строку ввода для лога: повторяющиеся пробелы→один, края обрезаются.
+  # В лог пишем ТОЧНЫЙ текст из поля ввода (что именно шло на отправку).
+  INPUT_CLEAN=$(printf '%s' "$INPUT_LINE" | sed 's/[[:space:]]\{1,\}/ /g; s/^ //; s/ $//')
 
   # --- Детект паузы (хэширование экрана, streak-based) ---
   PREV_HASH=$(cat "$HASHF" 2>/dev/null) || true
@@ -118,13 +121,13 @@ while [ "$(date +%s)" -lt "$END_TS" ]; do
     if [ "$FROZEN" = "1" ]; then
       sleep 1
       if tmux send-keys -t "$S" C-m; then
-        log "цикл $CYCLE: warning ОТПРАВЛЕНО (Enter/C-m): $(printf '%s' "$INPUT_LINE" | sed 's/ *$//')"
+        log "цикл $CYCLE: warning ОТПРАВЛЕНО (Enter/C-m), текст во вводе: «$INPUT_CLEAN» "
         : > "$STATE"; rm -f "${STATE}.pinged"
       else
         log "цикл $CYCLE: err ошибка при отправке Enter"
       fi
     else
-      log "цикл $CYCLE: текст во вводе но не FROZEN (md5 различается) — ждём ещё цикл"
+      log "цикл $CYCLE: текст во вводе: «$INPUT_CLEAN» но не FROZEN (md5 различается) — ждём ещё цикл"
     fi
   else
     # --- Err-детект по истории + видимому экрану (только если ввод пуст и не сработал Thought) ---
