@@ -4,7 +4,7 @@
 #FROM orcarouter/Qwen3.8-27B-Uncensored:iq3_xxs
 #FROM orcarouter/Qwen3.8-27B-Uncensored:q3_K_S
 #FROM orcarouter/Qwen3.8-27B-Uncensored:q3_K_M
-#FROM orcarouter/Qwen3.8-27B-Uncensored:iq4_xs
+FROM orcarouter/Qwen3.8-27B-Uncensored:iq4_xs
 #FROM orcarouter/Qwen3.8-27B-Uncensored:q5_K_M
 #FROM orcarouter/Qwen3.8-27B-Uncensored:q8_0
 
@@ -15,6 +15,9 @@ PARAMETER num_ctx 2048
 #PARAMETER num_ctx 32768
 #PARAMETER num_ctx 65536
 #PARAMETER num_ctx 131072
+
+RENDERER qwen3.8
+PARSER qwen3.5
 
 PARAMETER temperature 1
 PARAMETER top_p 0.95
