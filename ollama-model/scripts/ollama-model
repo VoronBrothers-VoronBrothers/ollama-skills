@@ -1,0 +1,40 @@
+#!/bin/bash
+# ollama-model <model_name> — запускает ollama TUI в MAIN-HOUSE, фильтрует по имени модели.
+# Аналог helper-start, но вместо "cloud" вводит произвольный текст из $1.
+
+set -e
+
+MODEL="${1:?Usage: ollama-model <model_name>}"
+
+# --- 1. Найти следующий свободный номер ---
+NEXT=1
+while tmux list-windows -t MAIN-HOUSE -F '#{window_name}' 2>/dev/null | grep -q "ollama_${NEXT}"; do
+    NEXT=$((NEXT + 1))
+done
+T="MAIN-HOUSE:ollama_${NEXT}"
+
+# --- 2. Создать окно и запустить ollama TUI ---
+tmux new-window -t MAIN-HOUSE -n "ollama_${NEXT}"
+sleep 0.3
+tmux send-keys -t $T "ollama"
+sleep 2
+tmux send-keys -t $T C-m       # Enter — запустить ollama
+sleep 3
+tmux send-keys -t $T Right     # стрелка вправо (навигация по TUI)
+sleep 1.5
+tmux send-keys -l -t $T "$MODEL"   # фильтр по имени модели
+
+# --- 3. Подождать пока отобразится список моделей ---
+for i in $(seq 1 8); do
+    OUT=$(tmux capture-pane -pt $T | grep -v '^[[:space:]]*$')
+    [ -n "$OUT" ] && break
+    sleep 1
+done
+
+# --- 4. PageDown — курсор на последнюю видимую строку списка ---
+tmux send-keys -t $T PageDown
+sleep 0.5
+
+echo "ollama_${NEXT} готов: $T (фильтр: ${MODEL}, курсор после PageDown)"
+echo "--- кадр ---"
+tmux capture-pane -pt $T | grep -v '^[[:space:]]*$'

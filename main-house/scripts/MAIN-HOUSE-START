@@ -1,0 +1,18 @@
+#!/bin/bash
+
+# 1. Проверяем сессию и создаём её с двумя окнами (если ещё нет)
+tmux list-sessions | grep -q "^MAIN-HOUSE:" || tmux new-session -s MAIN-HOUSE -d -n "control-center" \; new-window -t MAIN-HOUSE -n "work"
+
+# 2. Отправляем команду в окно control-center (если enterwatch ещё не запущен там)
+sleep 0.2
+tmux send-keys -t MAIN-HOUSE:control-center "enterwatch && cd /tmp && tail -f tmux_watch_enter.log" C-m
+
+# 3. Статус для вызывающего
+sleep 1
+echo "[MAIN-HOUSE] OK"
+echo "  windows: $(tmux list-windows -t MAIN-HOUSE -F '  #{window_index}: #{window_name}')"
+if tmux has-session -t enterwatch 2>/dev/null; then
+    echo "  enterwatch: активен (pid $(pgrep -f tmux_watch_enter.sh | head -1))"
+else
+    echo "  enterwatch: НЕ запущен — проверь control-center"
+fi

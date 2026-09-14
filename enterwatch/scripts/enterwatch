@@ -1,0 +1,15 @@
+#!/bin/bash
+# enterwatch — запуск (replace-режим: убивает старый экземпляр)
+tmux kill-session -t enterwatch 2>/dev/null
+tmux new-session -d -s enterwatch \
+  "bash /home/voron/.ollama/skills/enterwatch/scripts/tmux_watch_enter.sh"
+
+# Проверка через ~3 сек
+sleep 3
+if tmux has-session -t enterwatch 2>/dev/null; then
+    echo "[enterwatch] запущен: $(tail -1 /tmp/tmux_watch_enter.log)"
+else
+    echo "[enterwatch] ERROR: не запустился, проверь лог" >&2
+    tail -5 /tmp/tmux_watch_enter.log 2>/dev/null
+    exit 1
+fi

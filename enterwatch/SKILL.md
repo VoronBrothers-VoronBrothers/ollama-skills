@@ -11,19 +11,16 @@ description: "Гарантия отправки сообщений самому 
 
 ## Запуск (1 раз в начале задачи)
 
+Команда `enterwatch` прописана в PATH (`~/.local/bin/enterwatch`). Просто напиши:
+
 ```bash
-# Режим замены: запуск ВСЕГДА заменяет живой экземпляр — скрипт сам убивает старый
-# процесс и стартует с полным 5ч. kill-session нужен от мёртвого остатка сессии.
-tmux kill-session -t enterwatch 2>/dev/null
-tmux new-session -d -s enterwatch \
-  "bash /home/voron/.ollama/skills/enterwatch/scripts/tmux_watch_enter.sh"
+enterwatch
 ```
 
-Через ~3 секунды проверить, что жив:
-```bash
-sleep 3; tail -1 /tmp/tmux_watch_enter.log && tmux ls | grep enterwatch
-```
-В логе должна быть свежая строка «запущен … интервал Ns». Если нет — запуск не удался (например, сессия уже была занята), повтори команду.
+Скрипт сам: убивает старый экземпляр → запускает новый tmux-процесс → через 3с подтверждает результат.
+Успех выглядит так: `[enterwatch] запущен: … цикл 1: ок (ввод пуст, еррор нет, thought чист)`
+
+> Внутренний механизм (`~/.local/bin/enterwatch`): `tmux kill-session -t enterwatch && tmux new-session -d -s enterwatch "bash /home/voron/.ollama/skills/enterwatch/scripts/tmux_watch_enter.sh"`. Запускать ТОЛЬКО через этот wrapper (flock-защита от двойного запуска внутри).
 
 ## Что делает скрипт
 Каждые **N времени** (в течение **5 часов**) снимает экран tmux-сессии `orchestrator-this-is-your-own-tmux-send-pictures-here-with-task`, находит строку ввода (`│...│`). Если там лежит неотправленный текст — ждёт 1 секунду и шлёт `C-m` (Enter). Лог: `/tmp/tmux_watch_enter.log`.
