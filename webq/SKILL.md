@@ -1,6 +1,6 @@
 ---
 name: webq
-description: Use before task. Terminal web search + page fetch (w3m/DuckDuckGo), no API keys. Default for internet search; use only if it fails.
+description: Use before task. Terminal web search + page fetch (w3m/DuckDuckGo), no API keys. Default for internet search.
 ---
 
 # Web search & page reading from terminal (webq)

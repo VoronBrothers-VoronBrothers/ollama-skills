@@ -1,9 +1,11 @@
 #создание модели по этому ModelFile ollama create orchestrator -f ./Modelfile_orchestrator_promt
+
 #FROM ornith-1.5:35b
 #FROM orcarouter/Qwen3.8-27B-Uncensored:iq2_xxs
+#FROM orcarouter/Qwen3.8-27B-Uncensored:q2_K
 #FROM orcarouter/Qwen3.8-27B-Uncensored:iq3_xxs
 #FROM orcarouter/Qwen3.8-27B-Uncensored:q3_K_S
-FROM orcarouter/Qwen3.8-27B-Uncensored:iq3_m
+#FROM orcarouter/Qwen3.8-27B-Uncensored:iq3_m
 #FROM orcarouter/Qwen3.8-27B-Uncensored:q3_K_M
 #FROM orcarouter/Qwen3.8-27B-Uncensored:iq4_xs
 #FROM orcarouter/Qwen3.8-27B-Uncensored:q5_K_M

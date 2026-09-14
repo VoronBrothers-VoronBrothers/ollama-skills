@@ -3,8 +3,10 @@
 # 1. Проверяем сессию и создаём её с двумя окнами (если ещё нет)
 tmux list-sessions | grep -q "^MAIN-HOUSE:" || tmux new-session -s MAIN-HOUSE -d -n "control-center" \; new-window -t MAIN-HOUSE -n "work"
 
-# 2. Отправляем команду в окно control-center (если enterwatch ещё не запущен там)
+# 2. Останавливаем старый enterwatch/tail и запускаем новый
 sleep 0.2
+tmux send-keys -t MAIN-HOUSE:control-center C-c
+sleep 0.3
 tmux send-keys -t MAIN-HOUSE:control-center "enterwatch && cd /tmp && tail -f tmux_watch_enter.log" C-m
 
 # 3. Статус для вызывающего
