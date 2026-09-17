@@ -1,0 +1,4 @@
+#!/bin/bash
+# ollama-watch — живой поток логов ollama.service в реальном времени.
+# Глупый воркер: не знает, где запускается (tmux-окно или обычный терминал).
+exec journalctl -u ollama.service -f

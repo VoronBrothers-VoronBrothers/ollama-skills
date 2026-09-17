@@ -1,0 +1,59 @@
+#!/bin/bash
+# ════════════════════════════════════════════════════════════════
+#  ollama-cpu — воркер для окна 3 MAIN-HOUSE («модельное окно»).
+#
+#  Запускает в СВОЁМ окне ollama TUI и делает:
+#  ждать меню → Right (select model) → фильтр «cpu» → Enter.
+#  Итог: CPU-assistant-cpu открыт в чат-режиме, готов к send-keys.
+#
+#  Целевое окно = то, откуда запущен скрипт ($TMUX_PANE), поэтому его
+#  можно приложить модулем MAIN-HOUSE-START или вызвать вручную в любом
+#  tmux-окне.
+# ════════════════════════════════════════════════════════════════
+
+PANE="${TMUX_PANE:?ollama-cpu: должен запускаться внутри tmux-окна (нет \$TMUX_PANE)}"
+CAP() { tmux capture-pane -pt "$PANE" 2>/dev/null | grep -v '^[[:space:]]*$'; }
+
+# --- watchdog: ведёт клавиши, пока TUI жив в переднем плане этого шелла ---
+(
+  # ждём появления TUI-меню (маркер: «Chat with a model» или версионная строка)
+  ok=0
+  for i in $(seq 1 45); do
+    sleep 1
+    OUT=$(CAP)
+    if echo "$OUT" | grep -qE 'Chat with a model|Ollama [0-9]'; then ok=1; break; fi
+  done
+  [ "$ok" = 1 ] || { echo "ollama-cpu: TUI не появился — аборт"; exit 1; }
+
+  sleep 1
+  tmux send-keys -t "$PANE" Right        # вправо → экран выбора модели
+  sleep 2
+  tmux send-keys -l -t "$PANE" cpu       # фильтр: «cpu» → CPU-assistant-cpu
+
+  # ждём результат фильтра: чужие модели исчезают, остался только CPU-assistant
+  for i in $(seq 1 8); do
+    sleep 1
+    OUT=$(CAP)
+    if echo "$OUT" | grep -q "CPU-assistant" && ! echo "$OUT" | grep -qi 'gemma3'; then break; fi
+  done
+
+  tmux send-keys -t "$PANE" C-m          # Enter — выбрать CPU-assistant-cpu, открыть чат
+
+  # проверка: в футере чата модель + «full access enabled»
+  ok=0
+  for i in $(seq 1 20); do
+    sleep 1
+    OUT=$(CAP)
+    if echo "$OUT" | grep -q 'full access'; then ok=1; break; fi
+  done
+  if [ "$ok" = 1 ]; then
+    echo "ollama-cpu: окно $PANE — CPU-assistant-cpu открыт (фильтр cpu + Enter)"
+  else
+    echo "ollama-cpu: чат не подтверждён вручную, кадр ниже:"
+    CAP | tail -6
+  fi
+) &
+
+# --- сама команда «ollama» попадает в очередь ввода шелла:
+#     bash исполнит её сразу после выхода этого скрипта (без гонок) ---
+tmux send-keys -t "$PANE" ollama C-m

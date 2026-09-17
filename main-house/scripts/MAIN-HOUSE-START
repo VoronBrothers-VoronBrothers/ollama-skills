@@ -1,20 +1,62 @@
 #!/bin/bash
+# ════════════════════════════════════════════════════════════════
+#  MAIN-HOUSE — модульный запуск окружения оркестратора (ollama)
+#  Единственный вход: просто выполнить `MAIN-HOUSE-START`.
+#
+#  Логика: каждый вызов = ЧИСТЫЙ ПЕРЕЗАПУСК. Старая сессия убивается,
+#  все окна пересоздаются заново в порядке массива MODULES, и в каждое
+#  окно запускается его скрипт (даже если он уже был запущен). Тихо,
+#  независимо от прошлого состояния.
+#
+#  МОДУЛЬНОСТЬ: один модуль = одна строка "имя_окна|команда".
+#   • Приложить модуль   → добавить строку в MODULES.
+#   • Отключить модуль    → удалить/закомментировать строку.
+#   • Порядок окон (idx)  = порядок строк в массиве.
+#  Воркеры-скрипты не знают, где работают — это «глупые» процессы;
+#  все окна и запуски управляет только MAIN-HOUSE.
+# ════════════════════════════════════════════════════════════════
 
-# 1. Проверяем сессию и создаём её с двумя окнами (если ещё нет)
-tmux list-sessions | grep -q "^MAIN-HOUSE:" || tmux new-session -s MAIN-HOUSE -d -n "control-center" \; new-window -t MAIN-HOUSE -n "work"
+SESSION="MAIN-HOUSE"
 
-# 2. Останавливаем старый enterwatch/tail и запускаем новый
-sleep 0.2
-tmux send-keys -t MAIN-HOUSE:control-center C-c
+# ─── МОДУЛИ (точка прикладывания/отключения) ─────────────────────
+MODULES=(
+  "control-center|enterwatch && cd /tmp && tail -f tmux_watch_enter.log"
+  "ollama-logs|ollama-watch"
+  "work|work"
+  "ollama-cpu|ollama-cpu"   # idx 3 — модельное окно: CPU-assistant-cpu (фильтр cpu + Enter)
+)
+# ─────────────────────────────────────────────────────────────────
+
+# 1. Убиваем старую сессию целиком → фиксированный порядок окон, без мусора
+tmux kill-session -t "$SESSION" 2>/dev/null
 sleep 0.3
-tmux send-keys -t MAIN-HOUSE:control-center "enterwatch && cd /tmp && tail -f tmux_watch_enter.log" C-m
 
-# 3. Статус для вызывающего
+# 2. Создаём окна по порядку (пока пустые interactive-шеллы)
+# ВАЖНО: после new-session -d первый shell ещё не поднят; немедленный
+# new-window в той же сессии убивает окно 0 (гонка tmux). Даём паузу.
+first=1
+for mod in "${MODULES[@]}"; do
+  name="${mod%%|*}"
+  if [ "$first" -eq 1 ]; then
+    tmux new-session -d -s "$SESSION" -n "$name"
+    first=0
+    sleep 0.4   # ← окно 0: ждём, пока shell поднимется
+  else
+    tmux new-window -t "$SESSION" -n "$name"
+  fi
+done
+sleep 0.3       # ← пауза перед отправкой команд во все окна
+
+# 3. Запускаем в каждое окно его команду (C-c на случай остатков → новая команда)
+for mod in "${MODULES[@]}"; do
+  name="${mod%%|*}"
+  cmd="${mod#*|}"
+  tmux send-keys -t "$SESSION:$name" C-c
+  sleep 0.2
+  tmux send-keys -t "$SESSION:$name" "$cmd" Enter
+done
+
+# 4. Статус для вызывающего — явный сигнал, что всё открыто и запущено
 sleep 1
-echo "[MAIN-HOUSE] OK"
-echo "  windows: $(tmux list-windows -t MAIN-HOUSE -F '  #{window_index}: #{window_name}')"
-if tmux has-session -t enterwatch 2>/dev/null; then
-    echo "  enterwatch: активен (pid $(pgrep -f tmux_watch_enter.sh | head -1))"
-else
-    echo "  enterwatch: НЕ запущен — проверь control-center"
-fi
+echo "[MAIN-HOUSE] OK — сессия пересоздана, все окна открыты, скрипты запущены заново:"
+tmux list-windows -t "$SESSION" -F '  idx #{window_index}: #{window_name}  (#{pane_current_command})'

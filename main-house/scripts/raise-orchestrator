@@ -1,0 +1,96 @@
+#!/bin/bash
+# ════════════════════════════════════════════════════════════════
+#  raise-orchestrator — поднимает оркестратора в его отдельной сессии.
+#
+#  Находит tmux-сессию, запускает ollama TUI,
+#  фильтрует модель orchestrator, открывает чат и присылает
+#  команду прочитать файл задач tasks.md.
+#
+#  Хранится в main-house/scripts/, но НЕ вызывается из MAIN-HOUSE-START.
+#  Симлинк: ~/.local/bin/raise-orchestrator
+# ════════════════════════════════════════════════════════════════
+
+SESSION="orchestrator-this-is-your-own-tmux-send-pictures-here-with-task"
+TASK_FILE="/home/voron/Документы/VB-ollama/Папка заданий для AI/tasks.md"
+
+# 1. Проверяем, что сессия существует (поднимает её, если нет)
+if ! tmux has-session -t "$SESSION" 2>/dev/null; then
+  echo "[raise-orchestrator] Сессия не найдена — создаю..."
+  tmux new-session -d -s "$SESSION" -n "orchestrator"
+  sleep 0.5
+fi
+
+# Берём первый плейн сессии (окно 0)
+PANE=$(tmux list-panes -t "$SESSION:0" -F '#{pane_id}' | head -1)
+[ -z "$PANE" ] && { echo "[raise-orchestrator] Не удалось получить pane"; exit 1; }
+
+# CAP с алт-экраном (-e) — надёжнее для TUI bubbletea
+CAP() { tmux capture-pane -ept "$PANE" 2>/dev/null | grep -v '^[[:space:]]*$'; }
+
+# Проверка процесса: ollama жив в плейне?
+OLLAMA_ALIVE() {
+  local pane_pid=$(tmux list-panes -t "$SESSION:0" -F '#{pane_pid}' | head -1)
+  [ -z "$pane_pid" ] && return 1
+  pgrep -P "$pane_pid" ollama >/dev/null 2>&1 || \
+    pgrep -a ollama | grep -q . 
+}
+
+# 2. Запускаем ollama TUI
+tmux send-keys -t "$PANE" "ollama" C-m
+
+# Ждём появления TUI (до 30 сек) — через CAP + процесс
+ok=0
+for i in $(seq 1 30); do
+  sleep 1
+  OUT=$(CAP)
+  if echo "$OUT" | grep -qE 'Chat with a model|Ollama [0-9]|ollama'; then ok=1; break; fi
+  # Fallback: процесс жив
+  OLLAMA_ALIVE && { ok=1; break; }
+done
+
+if [ "$ok" != 1 ]; then
+  echo "raise-orchestrator: TUI не появился — аборт"
+  exit 1
+fi
+echo "[raise-orchestrator] TUI запущен."
+
+# 3. Навигация к выбору модели: Tab (не Right)
+sleep 2
+tmux send-keys -t "$PANE" Tab
+sleep 2
+
+# Фильтр по названию модели
+tmux send-keys -l -t "$PANE" orchestrator
+sleep 2
+
+# Enter — выбрать модель, открыть чат
+tmux send-keys -t "$PANE" C-m
+
+# 4. Ждём открытия чата (до 15 сек)
+ok=0
+for i in $(seq 1 15); do
+  sleep 1
+  OUT=$(CAP)
+  # Чат открыт: футер содержит имя модели
+  if echo "$OUT" | grep -qi 'orchestrator.*full access\|CPU-assistant\|full access enabled'; then
+    ok=1; break
+  fi
+done
+
+# Fallback-проверка: процесс жив и плейн не пуст
+if [ "$ok" != 1 ] && OLLAMA_ALIVE; then
+  OUT=$(CAP)
+  if [ -n "$OUT" ]; then
+    echo "[raise-orchestrator] Чат подтверждён (fallback: pleyne non-empty)."
+    ok=1
+  fi
+fi
+
+# 5. Присылаем команду прочитать файл задач
+if [ "$ok" = 1 ]; then
+  tmux send-keys -t "$PANE" "Прочитай файл $TASK_FILE и выполни задачу." C-m
+  echo "[raise-orchestrator] OK — оркестратор запущен, задача отправлена."
+else
+  echo "[raise-orchestrator] Чат не подтверждён. Кадр:"
+  CAP | tail -8
+fi
