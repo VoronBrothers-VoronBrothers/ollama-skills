@@ -23,7 +23,7 @@ MODULES=(
   "control-center|enterwatch && cd /tmp && tail -f tmux_watch_enter.log"
   "ollama-logs|ollama-watch"
   "work|work"
-  "ollama-cpu|ollama-cpu"   # idx 3 — модельное окно: CPU-assistant-cpu (фильтр cpu + Enter)
+  "ollama-cloud|ollama-cloud"   # idx 3 — модельное окно: gemma4:31b-cloud (фильтр cloud + Enter)
 )
 # ─────────────────────────────────────────────────────────────────
 

@@ -1,6 +1,6 @@
 ---
 name: main-house
-description: "Запуск окружения MAIN-HOUSE (сессия tmux с окнами control-center, ollama-logs, work, ollama-cpu) для оркестратора. Модульно: порядок и набор окон задаёт массив MODULES в скрипте MAIN-HOUSE-START."
+description: "Запуск окружения MAIN-HOUSE (сессия tmux с окнами control-center, ollama-logs, work, ollama-cloud) для оркестратора. Модульно: порядок и набор окон задаёт массив MODULES в скрипте MAIN-HOUSE-START."
 ---
 
 # Main House — модульный запуск окружения оркестратора (ollama)
@@ -17,11 +17,11 @@ description: "Запуск окружения MAIN-HOUSE (сессия tmux с �
 | 0   | `control-center` | `enterwatch`         | selfshot, отправка в tmux           | да (поток) |
 | 1   | `ollama-logs`    | `ollama-watch`       | живой лог ollama.service            | да (поток) |
 | 2   | `work`           | `work`               | интерактивный login-shell           | **нет**    |
-| 3   | `ollama-cpu`     | `ollama-cpu`         | модульное окно: TUI с CPU-assistant-cpu (фильтр cpu + Enter) | **нет** (TUI, send-keys можно) |
+| 3   | `ollama-cloud`     | `ollama-cloud`         | модульное окно: TUI с gemma4:31b-cloud (фильтр cloud + Enter) | **нет** (TUI, send-keys можно) |
 
 Окна с потоками (`control-center`, `ollama-logs`) — только чтение через
 `capture-pane`, команды не слать. Для `send-keys`: `work` (чистый шелл) и
-`ollama-cpu` (интерактивный TUI модели).
+`ollama-cloud` (интерактивный TUI модели).
 
 ## Модульность (приложить / отключить)
 
@@ -32,7 +32,7 @@ MODULES=(
   "control-center|enterwatch && cd /tmp && tail -f tmux_watch_enter.log"
   "ollama-logs|ollama-watch"
   "work|work"
-  "ollama-cpu|ollama-cpu"   # idx 3 — модельное окно (CPU-assistant-cpu)
+  "ollama-cloud|ollama-cloud"   # idx 3 — модельное окно: gemma4:31b-cloud (фильтр cloud + Enter)
 )
 ```
 

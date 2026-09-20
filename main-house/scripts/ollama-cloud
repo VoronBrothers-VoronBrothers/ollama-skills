@@ -1,0 +1,63 @@
+#!/bin/bash
+# ════════════════════════════════════════════════════════════
+#  ollama-cloud — воркер для окна MAIN-HOUSE «ollama-cloud» (idx 3).
+#
+#  Запускает в СВОЁМ окне ollama TUI и делает:
+#  ждать меню → Right (select model) → фильтр «cloud» → Enter.
+#  Итог: выбранная cloud модель открыта в чат-режиме, готов к send-keys.
+#
+#  Целевое окно = то, откуда запущен скрипт ($TMUX_PANE), поэтому его
+#  можно приложить модулем MAIN-HOUSE-START или вызвать вручную в любом
+#  tmux-окне.
+# ════════════════════════════════════════════════════════════
+
+PANE="${TMUX_PANE:?ollama-cloud: должен запускаться внутри tmux-окна (нет \$TMUX_PANE)}"
+CAP() { tmux capture-pane -pt "$PANE" 2>/dev/null | grep -v '^[[:space:]]*$'; }
+
+# --- watchdog: ведёт клавиши, пока TUI жив в переднем плане этого шелла.
+#     Вывод — только в лог-файл (не на экран): echo внутри плейна затирал бы
+#     нижнюю строку TUI (футер с «full access»).
+LOG="/tmp/ollama-cloud-watch.log"
+(
+  # ждём появления TUI — по процессу (дети шелла этого плейна), без поиска имён строк:
+  # заголовочные строки TUI меняли названия, на текст не опираемся
+  PANE_PID=$(tmux list-panes -t "$PANE" -F '#{pane_pid}' 2>/dev/null | head -1)
+  ok=0
+  for i in $(seq 1 45); do
+    sleep 1
+    if pgrep -P "$PANE_PID" ollama >/dev/null 2>&1; then ok=1; break; fi
+  done
+  [ "$ok" = 1 ] || { echo "ollama-cloud: TUI не появился — аборт"; exit 1; }
+
+  sleep 1
+  tmux send-keys -t "$PANE" Right        # вправо → экран выбора модели
+  sleep 2
+  tmux send-keys -l -t "$PANE" gemma4:31b-cloud      # фильтр: «cloud» → gemma4:31b-cloud. фильтр может меняться в зависимости от потребностей и ollama list
+
+  # ждём результат фильтра: должен остаться целевой облачный модельный маркер
+  for i in $(seq 1 8); do
+    sleep 1
+    OUT=$(CAP)
+    if echo "$OUT" | grep -q "gemma4:31b-cloud"; then break; fi
+  done
+
+  tmux send-keys -t "$PANE" C-m          # Enter — выбрать фильтр, открыть чат
+
+  # проверка: в футере/списке модель + «full access enabled»
+  ok=0
+  for i in $(seq 1 25); do
+    sleep 1
+    OUT=$(CAP)
+    if echo "$OUT" | grep -q 'gemma4' && echo "$OUT" | grep -q 'full access'; then ok=1; break; fi
+  done
+  if [ "$ok" = 1 ]; then
+    echo "ollama-cloud: окно $PANE — ollama-cloud открыт (фильтр cloud + Enter)"
+  else
+    echo "ollama-cloud: чат не подтверждён вручную, кадр ниже:"
+    CAP | tail -6
+  fi
+) > "$LOG" 2>&1 &
+
+# --- сама команда «ollama» попадает в очередь ввода шелла:
+#     bash исполнит её сразу после выхода этого скрипта (без гонок) ---
+tmux send-keys -t "$PANE" ollama C-m

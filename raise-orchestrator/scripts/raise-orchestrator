@@ -30,24 +30,21 @@ PANE=$(tmux list-panes -t "$SESSION:0" -F '#{pane_id}' | head -1)
 # CAP с алт-экраном (-e) — надёжнее для TUI bubbletea
 CAP() { tmux capture-pane -ept "$PANE" 2>/dev/null | grep -v '^[[:space:]]*$'; }
 
-# Проверка процесса: ollama жив в плейне?
+# Проверка процесса: ollama жив именно в этом плейне (без глобального fallback —
+# чужие TUI в других окнах не должны засчитываться)
 OLLAMA_ALIVE() {
   local pane_pid=$(tmux list-panes -t "$SESSION:0" -F '#{pane_pid}' | head -1)
   [ -z "$pane_pid" ] && return 1
-  pgrep -P "$pane_pid" ollama >/dev/null 2>&1 || \
-    pgrep -a ollama | grep -q . 
+  pgrep -P "$pane_pid" ollama >/dev/null 2>&1
 }
 
 # 2. Запускаем ollama TUI
 tmux send-keys -t "$PANE" "ollama" C-m
 
-# Ждём появления TUI (до 30 сек) — через CAP + процесс
+# Ждём появления TUI (до 30 сек) — по процессу, без поиска имён строк
 ok=0
 for i in $(seq 1 30); do
   sleep 1
-  OUT=$(CAP)
-  if echo "$OUT" | grep -qE 'Chat with a model|Ollama [0-9]|ollama'; then ok=1; break; fi
-  # Fallback: процесс жив
   OLLAMA_ALIVE && { ok=1; break; }
 done
 
@@ -57,7 +54,7 @@ if [ "$ok" != 1 ]; then
 fi
 echo "[raise-orchestrator] TUI запущен."
 
-# 3. Навигация к выбору модели: Tab (не Right)
+# 3. Навигация к выбору модели: Right
 sleep 2
 tmux send-keys -t "$PANE" Right
 sleep 2
@@ -74,8 +71,8 @@ ok=0
 for i in $(seq 1 15); do
   sleep 1
   OUT=$(CAP)
-  # Чат открыт: футер содержит имя модели
-  if echo "$OUT" | grep -qi 'orchestrator.*full access\|CPU-assistant\|full access enabled'; then
+  # Чат открыт: футер содержит «full access» (имя модели стабильно)
+  if echo "$OUT" | grep -qi 'full access'; then
     ok=1; break
   fi
 done
