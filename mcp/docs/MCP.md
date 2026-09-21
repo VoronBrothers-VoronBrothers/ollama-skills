@@ -35,7 +35,14 @@ Global flag:
 
 A missing config file is fine — no external tools are added and the TUI starts normally. Servers that fail to start or list tools are skipped with a warning on stderr; they never abort the session.
 
-## How tools appear in the TUI
+## Workflow: storing `mcp.json` outside `~/.ollama`
+
+The live config file is `~/.ollama/mcp.json`. Do **not** keep it there permanently — archive and retrieve it through the docs folder:
+
+1. **Before work**: copy the needed config from `/home/voron/.ollama/skills/mcp/docs` into `~/.ollama/mcp.json`, then start the TUI.
+2. **After use**: move (archive) `~/.ollama/mcp.json` back to `/home/voron/.ollama/skills/mcp/docs` — into the corresponding subfolder for that server/config — and remove it from `~/.ollama/`, so the next run starts without external MCP servers.
+
+This keeps `~/.ollama/` clean between sessions while preserving reusable configs under docs.
 
 - Each remote tool keeps its original name (e.g. `echo`, `web_search`).
 - If two servers expose the same tool, or it collides with a built-in tool, the registry prefixes it with the server name: `srvB_echo`. A pathological double collision gets a numeric suffix (`srv_3`).
