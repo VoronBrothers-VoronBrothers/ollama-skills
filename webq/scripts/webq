@@ -1,0 +1,143 @@
+#!/usr/bin/env bash
+# webq — терминальный веб-поиск + загрузка страниц. Нет API-ключей.
+#   search "запрос" [n]    — N результатов: Title / ● URL / snippet (по умолчанию 10)
+#   top    "запрос" [n]    — только URL, по одному на строку (удобно для $())
+#   get    <url>           — HTML → текст: elinks → lynx → w3m (первый успешный)
+# Поиск: DuckDuckGo html (основной, 2 попытки с паузой) -> Bing RSS en-US (fallback).
+set -u
+
+UA="Mozilla/5.0 (X11; Linux x86_64; rv:129.0) Gecko/20100101 Firefox/129.0"
+
+enc() { python3 -c 'import sys,urllib.parse as u;print(u.quote(sys.argv[1]))' "$@"; }
+error() { printf '%s\n' "$*" >&2; }
+usage() { sed -n '2,7p' "${BASH_SOURCE[0]}" | sed 's/^#//' ; }
+
+# --- DDG: HTML -> TSV (title \t url \t snippet), до N строк.
+ddg_tsv() { # $1=N rest=query
+  local n="$1"; shift; local html enc_q pycode
+  enc_q=$(enc "$@") || return 1
+  html=$(curl -s --max-time 30 -A "$UA" "https://html.duckduckgo.com/html/?q=$enc_q" 2>/dev/null) || true
+  [[ -n ${html//[[:space:]]/} ]] || return 1
+  pycode=$(cat <<'PYEOF'
+import sys, re, urllib.parse as up, html as H
+N = int(sys.argv[1]) if len(sys.argv)>2 else 100
+raw = sys.stdin.read()
+if "result__a" not in raw:
+    sys.exit(3)
+res=[]
+for m in re.finditer(r'<a\b[^>]*?class="result__a"[^>]*?uddg=([^&"]+)[^>]*?>(.*?)</a>', raw, re.S):
+    res.append((m.group(1), m.group(2)))
+snips=[H.unescape(re.sub(r"<[^>]+>","",x)).strip() for x in [m.group(1) for m in re.finditer(r'class="result__snippet"[^>]*>(.*?)</a>', raw, re.S)]]
+for i,(eu,t) in enumerate(res[:N]):
+    url=up.unquote(eu); t=re.sub(r"\s+"," ",H.unescape(re.sub(r"<[^>]+>","",t))).strip()
+    if url and "://" not in url: url="https://"+url
+    s=re.sub(r"\s+"," ",snips[i])[:200] if i<len(snips) else ""
+    print(f"{t}\t{url}\t{s}")
+PYEOF
+  )
+  printf '%s' "$html" | python3 -c "$pycode" "$n" || return 1
+}
+
+# --- Bing (en-US, format=rss): чистый XML с реальными <link>. Fallback при DDG-лимите.
+bing_tsv() { # $1=N rest=query
+  local n="$1"; shift; local html enc_q pycode
+  enc_q=$(enc "$@") || return 1
+  html=$(curl -s --max-time 30 -A "$UA" "https://www.bing.com/search?q=$enc_q&format=rss&setmkt=en-US&setlang=en" 2>/dev/null) || true
+  [[ -n ${html//[[:space:]]/} ]] || return 1
+  pycode=$(cat <<'PYEOF'
+import sys, re, html as H
+N = int(sys.argv[1]) if len(sys.argv)>2 else 100
+def clean(x): return re.sub(r"\s+"," ",H.unescape(re.sub(r"<[^>]+>","",x))).strip()
+raw=sys.stdin.read(); items=re.findall(r"<item>(.*?)</item>", raw, re.S)
+out=0
+for it in items:
+    t=re.search(r"<title>(.*?)</title>", it, re.S)
+    l=re.search(r"<link>(.*?)</link>", it, re.S)
+    d=re.search(r"<description>(.*?)</description>", it, re.S)
+    if not (t and l): continue
+    url=l.group(1).strip()
+    print(clean(t.group(1))+"\t"+url+"\t"+clean(d.group(1) if d else "")[:200])
+    out+=1
+    if out>=N: break
+sys.exit(0 if out else 4)
+PYEOF
+  )
+  printf '%s' "$html" | python3 -c "$pycode" "$n" || return 1
+}
+
+# --- TSV (stdin) -> вывод. $1=list|fmt, $2=N
+emit() { # mode, n ; stdin=TSV
+  local pycode
+  pycode=$(cat <<'PYEOF'
+import sys
+mode=sys.argv[1]
+for line in sys.stdin:
+    parts=line.rstrip("\n").split("\t",2)
+    if len(parts)<2 or not parts[1].strip(): continue
+    t=parts[0]; u=parts[1]; s=(parts[2] if len(parts)>2 else "").strip()
+    if mode=="list": print(u)
+    else:
+        print(t or "(без заголовка)")
+        print("● "+u)
+        if s: print(s)
+        print()
+PYEOF
+  )
+  python3 -c "$pycode" "$1" "$2"
+}
+
+# --- Поиск с fallback: DDG (2 попытки, пауза 8с) -> Bing RSS. TSV в stdout, rc=0 если нашлось.
+do_search_tsv() { # $1=N rest=query ; sets REPLY_OUT + returns rc
+  local n="$1"; shift; local out rc attempt
+  for attempt in 1 2; do
+    if [[ $attempt -eq 2 ]]; then sleep 8; fi
+    out=$(ddg_tsv "$n" "$@"); rc=$?
+    if [[ $rc -eq 0 && -n ${out//[[:space:]]/} ]]; then REPLY_ENGINE=ddg; REPLY_OUT="$out"; return 0; fi
+  done
+  error "webq: DDG недоступен (лимит/bot-check), переключаюсь на Bing..." >&2
+  out=$(bing_tsv "$n" "$@"); rc=$?
+  if [[ $rc -eq 0 && -n ${out//[[:space:]]/} ]]; then REPLY_ENGINE=bing; REPLY_OUT="$out"; return 0; fi
+  error "webq: поиск не дал результатов (DDG и Bing). Смените формулировку или повторите позже." >&2
+  return 1
+}
+
+# --- HTML -> текст: elinks → lynx → w3m, первый давший нормальный объём.
+get_text() {
+  local url="$1" out rc
+  if command -v elinks >/dev/null; then
+    out=$(elinks -dump "$url" 2>/dev/null); rc=$?
+    if [[ $rc -eq 0 && ${#out} -ge 80 ]]; then printf '%s\n' "$out"; return 0; fi
+    error "webq: elinks не дал текст, пробую lynx/w3m"
+  fi
+  if command -v lynx >/dev/null; then
+    out=$(lynx -dump -nolist "$url" 2>/dev/null); rc=$?
+    if [[ $rc -eq 0 && ${#out} -ge 80 ]]; then printf '%s\n' "$out"; return 0; fi
+    error "webq: lynx не дал текст, пробую w3m"
+  fi
+  out=$(w3m -dump "$url" 2>/dev/null); rc=$?
+  if [[ $rc -eq 0 && ${#out} -ge 80 ]]; then printf '%s\n' "$out"; return 0; fi
+  error "webq: не удалось получить текст (elinks/lynx/w3m)"
+  return 1
+}
+
+if [[ $# -lt 1 || "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then usage; exit 0; fi
+
+case "$1" in
+  search|top)
+    cmd="$1"; shift
+    n=10 ; a=("$@") ; q=""
+    if [[ ${#a[@]} -gt 0 && "${a[-1]}" =~ ^[0-9]+$ ]]; then n="${a[-1]}"; unset 'a[-1]'; fi
+    for w in "${a[@]}"; do q+="$w "; done ; q="${q% }"
+    [[ -n ${q//[[:space:]]/} ]] || { error "webq: пустой запрос (пример: webq search \"term\")"; exit 1; }
+    if ! do_search_tsv "$n" "$q"; then exit 1; fi
+    emit "${cmd}" "$n" <<<"$REPLY_OUT"
+    ;;
+  get)
+    shift
+    [[ $# -ge 1 ]] || { error "webq get <url>"; exit 2; }
+    url="$*"
+    if ! [[ $url =~ ^[a-zA-Z][a-zA-Z0-9+.-]*: ]]; then url="https://$url"; fi
+    get_text "$url"
+    ;;
+  *) error "webq: неизвестная команда '$1' (search/top/get)" >&2 ; usage; exit 2 ;;
+esac

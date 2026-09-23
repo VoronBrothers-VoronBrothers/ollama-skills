@@ -44,6 +44,8 @@ The live config file is `~/.ollama/mcp.json`. Do **not** keep it there permanent
 
 This keeps `~/.ollama/` clean between sessions while preserving reusable configs under docs.
 
+## How tools appear in the TUI
+
 - Each remote tool keeps its original name (e.g. `echo`, `web_search`).
 - If two servers expose the same tool, or it collides with a built-in tool, the registry prefixes it with the server name: `srvB_echo`. A pathological double collision gets a numeric suffix (`srv_3`).
 - Tool descriptions come from the MCP server; schemas are mapped into Ollama's function schema (object/properties/required/items/enum/$defs). Exotic constructs degrade to a minimal object schema.

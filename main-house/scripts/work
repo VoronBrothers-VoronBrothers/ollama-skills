@@ -1,0 +1,4 @@
+#!/bin/bash
+# work — интерактивное рабочее окно MAIN-HOUSE:work.
+# Глупый воркер: поднимает чистый login-shell (PATH, алиасы). Можно заменить на любой REPL/TUI.
+exec bash --login

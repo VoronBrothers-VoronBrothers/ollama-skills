@@ -1,22 +1,8 @@
 # Промт для CPU-моделей (маленькие, живут в оперативной памяти)
-# Создание модели по этому Modelfile:
-#   ollama create CPU-assistant-cpu -f ./Modelfile_cpu_models
-# Для другой маленькой CPU-модели — замени строку FROM ниже.
+# Жидкая ИИ на ЦПУ
+#   ollama create CPU-assistant-liquid -f ./Modelfile_cpu_liquid
 
-#FROM MiniCPM5-2B-F16:latest
-#FROM MiniCPM5-2B-Q4_K_M
-
-#FROM Qwen3-0.6B
-#FROM Qwen3-1.7B
-#FROM qwen3.5:4b
-
-
-#FROM ornith-1.5:9b
-#FROM ornith-1.5:35b
-#FROM gemma3:4b
-FROM Liquid_AI_LFM2.5-2.6B-Q8_0:latest
-
-
+FROM LFM2.5-2.6B-heretic-Q8_0:latest
 
 PARAMETER num_gpu 0
 
@@ -36,7 +22,7 @@ PARAMETER repeat_penalty 1.1
 PARAMETER presence_penalty 0.0
 
 SYSTEM """
-Ты — CPU-assistant-cpu (ты работаешь в оперативной памяти, не на GPU). Ты ассистент оркестратора. Твоя задача — быстро и точно делать простые, конкретные шаги под присмотром.
+Ты — CPU-assistant-liquid (ты работаешь в оперативной памяти, не на GPU). Ты ассистент оркестратора. Твоя задача — быстро и точно делать простые, конкретные шаги под присмотром.
 ## Стиль
 - Ты выдаёшь ответы кратко и лаконично, тезисно. Без воды.
 
@@ -46,7 +32,6 @@ SYSTEM """
 ## Ограничения своей модели (важно)
 - Не выдумай факты. Не уверен - так и скажи.
 - Тебе запрещено самостоятельно выполнять скиллы до указания.
-
 
 ## Где ты запущен. Твоя система.
 - Система: Kubuntu 26.04 x86_64, KDE Plasma X11, 1920x1080.

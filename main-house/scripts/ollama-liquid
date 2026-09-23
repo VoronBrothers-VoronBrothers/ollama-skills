@@ -1,0 +1,74 @@
+#!/bin/bash
+# ════════════════════════════════════════════════════════════
+#  ollama-liquid — воркер для окна MAIN-HOUSE «ollama-liquid».
+#
+#  Запускает в СВОЁМ окне ollama TUI и делает:
+#  ждать меню → Right (select model) → фильтр "$FILTER" → Enter.
+#  Итог: liquid-модель выбрана, чат открыт, готов к send-keys.
+#
+#  Использование: ollama-liquid [фильтр]   (дефолт: cpu-assistant-liquid)
+#
+#  Целевое окно = $TMUX_PANE (то, откуда запущен скрипт), поэтому его можно
+#  приложить модулем MAIN-HOUSE-START или вызвать вручную в любом tmux-окне.
+#
+#  ЛИКВИДНОСТЬ: LFM-модель хранит состояние между ходами — диалог вести
+#  непрерывно, /new не обязателен (см. заметку ниже про конец ответа).
+# ════════════════════════════════════════════════════════════
+
+FILTER="${1:-cpu-assistant-liquid}"
+PANE="${TMUX_PANE:?ollama-liquid: должен запускаться внутри tmux-окна (нет \$TMUX_PANE)}"
+CAP() { tmux capture-pane -pt "$PANE" 2>/dev/null | grep -v '^[[:space:]]*$'; }
+
+# --- watchdog: ведёт клавиши, пока TUI жив в переднем плане этого шелла.
+#     Вывод — только в лог-файл (не на экран): echo внутри плейна затирал бы
+#     нижнюю строку TUI (футер с «full access»).
+LOG="/tmp/ollama-liquid-watch.log"
+(
+  # ждём появления TUI — по процессу (дети шелла этого плейна), без поиска имён строк:
+  PANE_PID=$(tmux list-panes -t "$PANE" -F '#{pane_pid}' 2>/dev/null | head -1)
+  ok=0
+  for i in $(seq 1 45); do
+    sleep 1
+    if pgrep -P "$PANE_PID" ollama >/dev/null 2>&1; then ok=1; break; fi
+  done
+  [ "$ok" = 1 ] || { echo "ollama-liquid: TUI не появился — аборт"; exit 1; }
+
+  sleep 1
+  tmux send-keys -t "$PANE" Right        # вправо → экран выбора модели
+  sleep 2
+  tmux send-keys -l -t "$PANE" "$FILTER" # фильтр (регистр не важен)
+
+  # ждём результат фильтра: строка с фильтром должна появиться в кадре
+  for i in $(seq 1 8); do
+    sleep 1
+    OUT=$(CAP)
+    if echo "$OUT" | grep -qiF -- "$FILTER"; then break; fi
+  done
+
+  tmux send-keys -t "$PANE" C-m          # Enter — выбрать фильтр, открыть чат
+
+  # проверка: в футере/списке модель + «full access enabled»
+  ok=0
+  for i in $(seq 1 25); do
+    sleep 1
+    OUT=$(CAP)
+    if echo "$OUT" | grep -qiF -- "$FILTER" && echo "$OUT" | grep -q 'full access'; then ok=1; break; fi
+  done
+  if [ "$ok" = 1 ]; then
+    echo "ollama-liquid: окно $PANE — чат открыт (фильтр: $FILTER)"
+  else
+    echo "ollama-liquid: чат не подтверждён, кадр ниже:"
+    CAP | tail -6
+  fi
+
+  # ЗАМЕТКА для оркестратора (лог и SKILL.md main-house):
+  # конец ответа помощника определяется строкой маркера вида:
+  #   ⏹ остановка: спец-символ • prompt N (кэш M) • out K • разм. X
+  # Числа меняются от хода к ходу; если модели вылетела/зависла БЕЗ этой
+  # строки — считать ответ незавершённым, проверить кадр и при необходимости
+  # повторить запрос (/new не обязателен: LFM держит state между ходами).
+) > "$LOG" 2>&1 &
+
+# --- сама команда «ollama» попадает в очередь ввода шелла:
+#     bash исполнит её сразу после выхода этого скрипта (без гонок) ---
+tmux send-keys -t "$PANE" ollama C-m

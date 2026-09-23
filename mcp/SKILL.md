@@ -1,8 +1,19 @@
 ---
 name: mcp
-description: "Reminder that the custom TUI fork has built-in MCP support (stdio + streamable HTTP). Use when configuring external MCP servers or checking why no external tools appear. Full format in docs/MCP.md."
+description: "Custom TUI fork has built-in MCP (stdio + streamable HTTP) via ~/.ollama/mcp.json. Ready-made server configs live in docs/<server_name>/mcp.json. Use before configuring or testing an external MCP tool."
 ---
 
 # MCP — напоминание
 
-В кастомном бинарнике ollama встроена функция MCP: внешние серверы подключаются при старте TUI по `~/.ollama/mcp.json` (stdio-команда или URL). Нет файла → внешних тулз нет, это штатно. Чтобы настроить — создать конфиг; формат и тесты описаны в `/home/voron/.ollama/skills/mcp/docs`.
+В кастомном бинарнике ollama встроена функция MCP: внешние серверы подключаются при старте TUI по `~/.ollama/mcp.json` (stdio-команда или URL). Нет файла → внешних тулз нет, это штатно. Формат конфига и тесты — в `/home/voron/.ollama/skills/mcp/docs/MCP.md`.
+
+## Готовые конфиги
+
+В `docs/<имя_сервера>/mcp.json` лежат готовые серверные конфиги (есть `google-chrome`). Не пиши mcp.json с нуля — бери готовый из нужной папки.
+
+## Порядок работы
+
+1. **До работы**: СКОПИРОВАТЬ нужный `docs/<сервер>/mcp.json` в `~/.ollama/mcp.json`, затем **перезапустить себя (оркестратора) или помощника** — TUI должен стартовать уже с этим файлом (инструменты подключаются только при старте).
+2. **Работа**: агенты видят инструменты сервера в тулз-списке и могут их вызывать (`require_approval` по умолчанию true — запрос подтверждения).
+3. **После работы**: удалить `~/.ollama/mcp.json`.
+4. После удаления **ничего перезапускать не надо** — уже подключённые инструменты висят до конца текущей рабочей сессии, новая сессия стартует без внешних тулз.
