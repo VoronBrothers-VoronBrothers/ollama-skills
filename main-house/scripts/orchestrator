@@ -1,0 +1,43 @@
+#!/bin/bash
+# ════════════════════════════════════════════════════════════════
+#  orchestrator — точка входа пользователя для начала работы.
+#
+#  Пользователь вводит `orchestrator` в консоль и получает готовое
+#  окружение: MAIN-HOUSE пересоздан, новая сессия оркестратора (старая
+#  убита безусловно), внутри неё запущен ollama TUI с моделью
+#  'orchestrator', терминал отдан пользователю через attach.
+#
+#  Модульность как у MAIN-HOUSE-START: один модуль = одна строка
+#  "имя|команда"; порядок строк в MODULES = порядок шагов.
+#    • Приложить шаг   → добавить строку в MODULES.
+#    • Отключить шаг    → удалить/закомментировать строку.
+#
+#  Рабочие шаги — отдельные скрипты из этой же директории:
+#    ollama-orchestrator-this-is-your-own-tmux-send-pictures-here-with-task
+#        — пункты 5+6 (новая сессия + attach)
+#    ollama-orchestrator
+#        — пункт 7 (ollama TUI, база: skills/ollama-model/scripts/ollama-model)
+# ════════════════════════════════════════════════════════════════
+
+SESSION="orchestrator-this-is-your-own-tmux-send-pictures-here-with-task"
+DIR="$(cd "$(dirname "$0")" && pwd)"
+SMALL="$DIR/ollama-orchestrator-this-is-your-own-tmux-send-pictures-here-with-task"
+
+# ─── МОДУЛИ (порядок строк = порядок шагов запуска) ─────────────
+MODULES=(
+  "main-house|$DIR/MAIN-HOUSE-START"                # п.2: окружение MAIN-HOUSE
+  "clean-session|tmux kill-session -t $SESSION 2>/dev/null || true"   # п.4: безусловное убийство прошлого tmux
+  "new-session+attach|$SMALL create"                # пп.5,6 (маленький скрипт)
+  "tui|$DIR/ollama-orchestrator orchestrator"       # п.7: ollama TUI с моделью orchestrator
+  "handover|$SMALL attach"                          # финальный attach — терминал за пользователем
+)
+# ────────────────────────────────────────────────────────────────
+
+for mod in "${MODULES[@]}"; do
+  name="${mod%%|*}"
+  cmd="${mod#*|}"
+  echo "[orchestrator] шаг: $name"
+  bash -c "$cmd" || { echo "[orchestrator] FAILED на шаге '$name'"; exit 1; }
+done
+
+echo "[orchestrator] OK — всё готово."

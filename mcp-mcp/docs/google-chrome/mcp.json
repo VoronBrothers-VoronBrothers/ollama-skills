@@ -1,0 +1,10 @@
+{
+  "servers": [
+    {
+      "name": "chrome",
+      "command": "node",
+      "args": ["/home/voron/.npm/_npx/8125ebe10bdf1a44/node_modules/chrome-devtools-mcp/build/src/bin/chrome-devtools-mcp.js"]
+    }
+  ],
+  "require_approval": true
+}

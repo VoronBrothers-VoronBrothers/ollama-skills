@@ -1,0 +1,10 @@
+{
+  "servers": [
+    {
+      "name": "prizrak",
+      "command": "python3",
+      "args": ["/home/voron/.ollama/skills/mcp-mcp/docs/prizrak-box/mcp-server.py"]
+    }
+  ],
+  "require_approval": true
+}

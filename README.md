@@ -2,7 +2,7 @@
 
 Скиллы Ollama (`SKILL.md`) для локального ИИ-оркестратора + вспомогательные скрипты, промты и база знаний.
 
-## Скиллы (27)
+## Скиллы (28)
 
 | Скилл | Назначение |
 |---|---|
@@ -15,7 +15,8 @@
 | enterwatch | Гарантия отправки сообщений самому себе (selfshot): каждые 5 минут жмёт Enter в tmux-сессии оркестратора, если там лежит неотправленный текст. ОБЯЗАТЕЛЬНО подключить перед selfshot |
 | gui-input | Управление мышью/клавиатурой (move, click, type, press keys) в GUI-приложениях |
 | helper | Локальные ИИ-помощники: разовый вызов по API (`curl /api/chat`, готовность = выход процесса) и интерактивный tmux-чат; делегирование подзадач, параллельная работа |
-| main-house | Запуск окружения MAIN-HOUSE (tmux-сессия с окнами control-center/ollama-logs/work/ollama-cloud/ollama-liquid): полный перезапуск или создание окон. Выполнить в начале каждого диалога |
+| main-house | Запуск окружения MAIN-HOUSE (tmux-сессия с окнами control-center/ollama-logs/work/ollama-cloud/ollama-cpu): полный перезапуск или создание окон. Выполнить в начале каждого диалога |
+| mcp-mcp | Custom TUI fork со встроенным MCP (stdio + streamable HTTP) через `~/.ollama/mcp.json`. Hot reload без рестарта: `/mcp reload` |
 | mcp | Встроенный MCP (stdio + streamable HTTP) через `~/.ollama/mcp.json`. Готовые конфигурации серверов — в `docs/<server_name>/mcp.json` |
 | model-boot-switch | Смена/запуск другой модели оркестратора (апгрейд кванта, смена бэкенда): Modelfile → `ollama create` → тест → boot-скрипт + перезапуск |
 | mouse-click | ЛКМ-клик по координатам X Y экрана (`xdotool`, `scripts/click.py`) — после selfshot/помощника с сеткой |

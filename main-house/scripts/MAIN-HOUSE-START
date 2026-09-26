@@ -29,7 +29,7 @@ MODULES=(
   "ollama-logs|ollama-watch"
   "work|work"
   "ollama-cloud|ollama-cloud"   # idx 3 — модельное окно: gemma4:31b-cloud (фильтр + Enter)
-  "ollama-liquid|ollama-liquid cpu-assistant-liquid"   # idx 4 — liquid-окно: LFM, фильтр CPU-assistant-liquid
+  "ollama-cpu|ollama-cpu"   # idx 4 — CPU-assistant- окно: TUI с CPU-assistant (фильтр cpu + Enter)
 )
 # ─────────────────────────────────────────────────────────────────
 

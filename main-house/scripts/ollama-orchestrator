@@ -1,0 +1,65 @@
+#!/bin/bash
+# ════════════════════════════════════════════════════════════════
+#  Пункт 7: ollama-orchestrator <model_name> (по умолчанию orchestrator).
+#
+#  Запускает ollama TUI внутри СВОЕЙ сессии оркестратора
+#  `orchestrator-this-is-your-own-tmux-send-pictures-here-with-task`
+#  и отфильтровывает список моделей по имени. Логика навигации — та же,
+#  что у ~/.ollama/skills/ollama-model/scripts/ollama-model (запуск →
+#  Right → фильтр → ожидание списка), единственная разница:
+#  цель — не окно MAIN-HOUSE, а наша отдельная сессия.
+#
+#  После завершения скрипта модель уже выбрана автоматически: Enter
+#  отправлен, чат открыт (состояние проверяется кадром capture-pane).
+# ════════════════════════════════════════════════════════════════
+
+MODEL="${1:-orchestrator}"
+SESSION="orchestrator-this-is-your-own-tmux-send-pictures-here-with-task"
+
+PANE=$(tmux list-panes -t "$SESSION:0" -F '#{pane_id}' 2>/dev/null | head -1)
+if [ -z "$PANE" ]; then
+    echo "[ollama-orchestrator] ОШИБКА — сессия '$SESSION' не найдена (создайте её сначала)"
+    exit 1
+fi
+
+# --- процессная проверка: ollama жив в плейне? ---
+OLLAMA_ALIVE() {
+    local pane_pid=$(tmux list-panes -t "$SESSION:0" -F '#{pane_pid}' | head -1)
+    [ -z "$pane_pid" ] && return 1
+    pgrep -P "$pane_pid" ollama >/dev/null 2>&1
+}
+
+# --- 1. Запустить ollama TUI (как в ollama-model, с проверкой процесса) ---
+tmux send-keys -t "$PANE" "ollama" C-m
+
+ok=0
+for i in $(seq 1 30); do
+    sleep 1
+    OLLAMA_ALIVE && { ok=1; break; }
+done
+if [ "$ok" != "1" ]; then
+    echo "[ollama-orchestrator] ТUI не появился — аборт"
+    exit 1
+fi
+
+# --- 2. Навигация: Right → фильтр по имени модели (как в ollama-model) ---
+sleep 2
+tmux send-keys -t "$PANE" Right        # навигация к списку моделей стрелка вправо
+sleep 2
+tmux send-keys -l -t "$PANE" "$MODEL"
+
+# --- 3. Подождать, пока отобразится список (retry до 8 с) ---
+for i in $(seq 1 8); do
+    OUT=$(tmux capture-pane -ept "$PANE" 2>/dev/null | grep -v '^[[:space:]]*$')
+    echo "$OUT" | grep -qi "$MODEL" && break
+    sleep 1
+done
+
+# --- 4. Enter — выбрать модель, открыть чат ---
+sleep 1
+tmux send-keys -t "$PANE" C-m
+sleep 2
+
+echo "[ollama-orchestrator] готов: $SESSION (фильтр: ${MODEL}, Enter отправлен) — чат открыт"
+echo "--- кадр ---"
+tmux capture-pane -ept "$PANE" 2>/dev/null | grep -v '^[[:space:]]*$'

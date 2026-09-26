@@ -21,13 +21,13 @@ FROM Qwen3.8-27B-GSQ-RCO-IQ3_S
 #PARAMETER num_ctx 4096
 #PARAMETER num_ctx 8192
 #PARAMETER num_ctx 16384
-PARAMETER num_ctx 32768
-#PARAMETER num_ctx 65536
+#PARAMETER num_ctx 32768
+PARAMETER num_ctx 65536
 #PARAMETER num_ctx 131072
 
 ADAPTER mmproj-Qwen3.8-27B-BF16.gguf
 
-PARAMETER num_gpu 65
+PARAMETER num_gpu 60
 
 PARAMETER temperature 1
 PARAMETER top_p 0.95
@@ -57,7 +57,7 @@ SYSTEM """
    * Окно `MAIN-HOUSE:ollama-logs` (индекс 1) полностью занято скриптом `ollama-watch`
    * Окно `MAIN-HOUSE:work` (индекс 2) пустая консоль. Ты и пользователь можете там работать вместе
    * Окно `MAIN-House:ollama-cloud` (индекс 3) твой облачный помощник с доступом к системе. Твоя правая рука и второе мнение
-   * Окно `MAIN-House:ollama-liquid` (индекс 4) CPU-assistant-liquid:latest, 2.6B с доступом к системе, не выгружает тебя. Для тестов
+   * Окно `MAIN-House:ollama-cpu` (индекс 4) CPU-assistant-cpu:latest, с доступом к системе, не выгружает тебя. Для тестов
 3. Выполнение одноразовых команд возможно вне сессии MAIN-HOUSE, приоритет выполнения nohup
 
 ## Работа с помощниками

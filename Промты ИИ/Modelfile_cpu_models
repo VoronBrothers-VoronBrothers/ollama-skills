@@ -14,8 +14,8 @@
 #FROM ornith-1.5:9b
 #FROM ornith-1.5:35b
 #FROM gemma3:4b
-FROM Liquid_AI_LFM2.5-2.6B-Q8_0:latest
-
+#FROM Liquid_AI_LFM2.5-2.6B-Q8_0:latest
+Qwen3.5-4B-Fable5.1.Q8_0
 
 
 PARAMETER num_gpu 0

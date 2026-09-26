@@ -1,0 +1,36 @@
+#!/bin/bash
+# ════════════════════════════════════════════════════════════════
+#  Пункты 5 и 6 запуска оркестратора (отдельный маленький скрипт).
+#
+#    create — п.5: новая сессия `tmux new -s <имя>`.
+#             Создаётся в detached-режиме, чтобы вызывающий скрипт
+#             `orchestrator` мог продолжить выполнение (шаг 7).
+#    attach — п.6: отдать терминал пользователя сессии (`tmux attach`).
+#             Финальный шаг точки входа; при отсутствии TTY просто
+#             сообщает, что сессия готова.
+#
+#  Вызывается точкой входа `orchestrator` (модули "new-session+attach"
+#  и "handover"). Можно запускать standalone: по умолчанию — attach.
+# ════════════════════════════════════════════════════════════════
+
+SESSION="orchestrator-this-is-your-own-tmux-send-pictures-here-with-task"
+
+case "${1:-attach}" in
+  create)
+    tmux kill-session -t "$SESSION" 2>/dev/null || true   # страховка: после п.4 остатков быть не должно, но гарантируем чистоту
+    sleep 0.3
+    tmux new-session -d -s "$SESSION" -n "orchestrator"
+    echo "[small] сессия '$SESSION' создана (detached, окно 'orchestrator')"
+    ;;
+  attach)
+    if [ -t 1 ]; then
+      exec tmux attach -t "$SESSION"
+    else
+      echo "[small] нет TTY — не присоединяюсь; сессия '$SESSION' готова."
+    fi
+    ;;
+  *)
+    echo "Usage: $(basename "$0") [create|attach]" >&2
+    exit 1
+    ;;
+esac
