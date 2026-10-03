@@ -4,6 +4,7 @@
 set -euo pipefail
 
 S="orchestrator-this-is-your-own-tmux-send-pictures-here-with-task"
+T="${S}:0"   # явный таргет: сессия + окно 0
 
 # Проверяем, существует ли целевая сессия tmux
 if ! tmux has-session -t "$S" 2>/dev/null; then
@@ -39,28 +40,28 @@ MESSAGE="[Сообщение из скрипта selfshot, 1. выполни з�
 tmux set-buffer -b "space_task" "$MESSAGE"
 
 # Очищаем строку ввода (Control + U) перед отправкой
-tmux send-keys -t "$S" C-u
+tmux send-keys -t "$T" C-u
 sleep 1
 
 # Вставляем весь текст мгновенно и атомарно из буфера памяти
-tmux paste-buffer -b "space_task" -t "$S"
+tmux paste-buffer -b "space_task" -t "$T"
 sleep 1
 
 # --- БЛОК ПАУЗЫ и ДУБЛИРОВАНИЯ ВВОДА (Каскадный прострел) ---
 # Если интерфейс лагает, первый Enter может уйти в пустоту.
 # Мы шлем серию разных сигналов отправки с микропаузами, чтобы "пробить" любой затуп.
-tmux send-keys -t "$S" -K C-[     # 0-й пауза чата, перехват ввода
+tmux send-keys -t "$T" -K C-[     # 0-й пауза чата, перехват ввода
 sleep 1
-tmux send-keys -t "$S" -K C-m     # 1-й силовой ввод (нативный ASCII Carriage Return)
+tmux send-keys -t "$T" -K C-m     # 1-й силовой ввод (нативный ASCII Carriage Return)
 sleep 1
-tmux send-keys -t "$S" Enter   # 2-й ввод (эмуляция клавиши терминала)
+tmux send-keys -t "$T" Enter   # 2-й ввод (эмуляция клавиши терминала)
 sleep 1
-tmux send-keys -t "$S" -N 20 C-m
+tmux send-keys -t "$T" -N 20 C-m
 sleep 0.5
-tmux send-keys -t "$S" -N 20 Enter
+tmux send-keys -t "$T" -N 20 Enter
 sleep 0.5
-tmux send-keys -t "$S" -N 20 -K Enter
+tmux send-keys -t "$T" -N 20 -K Enter
 sleep 1
-tmux send-keys -t "$S" DC
-tmux send-keys -t "$S" C-m
-tmux send-keys -t "$S" Enter
+tmux send-keys -t "$T" DC
+tmux send-keys -t "$T" C-m
+tmux send-keys -t "$T" Enter

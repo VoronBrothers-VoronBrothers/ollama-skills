@@ -1,0 +1,6 @@
+[
+  {"name": "ensure-overlay", "enabled": true},
+  {"name": "get-cursor",     "enabled": true},
+  {"name": "move-to",        "enabled": true},
+  {"name": "verify",         "enabled": true}
+]

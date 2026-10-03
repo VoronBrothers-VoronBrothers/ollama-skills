@@ -29,7 +29,7 @@ DRYRUN=${ENTERWATCH_DRYRUN:-0}          # 1 — не отправлять кла
 
 # Фразы-маркеры (используются как регистронезависимые подстроки)
 START_RE='try asking the agent to inspect files, run tools, or explain a repo'   # стартовая фраза ollama
-TH_WORD='thought'                       # слово Thought (целым словом, регистронезависимо)
+TH_RE='Thought:[[:space:]]*[0-9]+[[:space:]]*tokens'   # формат «Thought: N tokens»
 TELL_STR='tell the model what to do instead'         # регистронезависимо
 SELF_STR='[сообщение из скрипта selfshot'            # квадратная скобка в начале
 ERR_RE='err|Err|error|Error'             # только эти четыре написания (по спецификации)
@@ -144,13 +144,34 @@ while [ "$(date +%s)" -lt "$END_TS" ]; do
   ERR2_STATE="${STATE}.err2"
 
   if [ "$FROZEN" = "1" ]; then
-    # --- Правило 2: «Thought» + два подряд одинаковых кадра (застывший экран) ---
-    if printf '%s\n' "$LAST5" | grep -qwEi "$TH_WORD"; then
-      PREVT=$(cat "$TH_STATE" 2>/dev/null) || true
-      if [ "$CUR_HASH" != "$PREVT" ]; then
-        sleep 1
-        send_keys_safe "Сработал enterwatch. Ты завис на Thought" C-m \
-          && { printf '%s' "$CUR_HASH" > "$TH_STATE"; log "цикл $CYCLE: программа зависла на Thought (два кадра подряд) → отправлено сообщение"; ACTED=1; }
+    # --- Правило 2: «Thought: N tokens» + два подряд одинаковых кадра (застывший экран)
+    # Три подсостояния:
+    #   a) Thought содержит стоп-токен (◆/⏹) и ⁂ → сгенерирован стоп-токен внутри размышления.
+    #      Отправить: «Отработал enterwatch. Ты сгенерировал стоп-токен внутри блока размышления, нельзя так делать»
+    #   b) Thought содержит только ⁂ (без стоп-токенов) → всё хорошо, ничего не делать.
+    #   c) Thought без ⁂ — зависание → отправить «Сработал enterwatch. Ты завис на Thought». ---
+    TH_LINE=$(printf '%s\n' "$LAST5" | grep -iE "$TH_RE") || true
+    if [ -n "$TH_LINE" ]; then
+      if printf '%s\n' "$TH_LINE" | grep -qE '[◆⏹]'; then
+        # (a) Стоп-токен внутри блока размышления — предупреждение.
+        STOP_TH_STATE="${STATE}.thought_stop_token"
+        PREVST=$(cat "$STOP_TH_STATE" 2>/dev/null) || true
+        if [ "$CUR_HASH" != "$PREVST" ]; then
+          sleep 1
+          send_keys_safe "Отработал enterwatch. Ты сгенерировал стоп-токен внутри блока размышления, нельзя так делать" C-m \
+            && { printf '%s' "$CUR_HASH" > "$STOP_TH_STATE"; log "цикл $CYCLE: стоп-токен в Thought (◆/⏹ + ⁂) → отправлено сообщение"; ACTED=1; }
+        fi
+      elif printf '%s\n' "$TH_LINE" | grep -q '⁂'; then
+        # (b) Нормальное завершение, ничего не делать.
+        rm -f "$TH_STATE"
+      else
+        # (c) Зависание на Thought.
+        PREVT=$(cat "$TH_STATE" 2>/dev/null) || true
+        if [ "$CUR_HASH" != "$PREVT" ]; then
+          sleep 1
+          send_keys_safe "Сработал enterwatch. Ты завис на Thought" C-m \
+            && { printf '%s' "$CUR_HASH" > "$TH_STATE"; log "цикл $CYCLE: программа зависла на Thought (два кадра подряд) → отправлено сообщение"; ACTED=1; }
+        fi
       fi
     else
       rm -f "$TH_STATE"
@@ -193,7 +214,7 @@ while [ "$(date +%s)" -lt "$END_TS" ]; do
     fi
   else
     # Не застывший экран — сброс per-rule состояний, чтобы сработало заново при новом зависании.
-    rm -f "$TH_STATE" "$TELL_STATE" "$SELF_STATE" "$ERR2_STATE"
+    rm -f "$TH_STATE" "${STATE}.thought_stop_token" "$TELL_STATE" "$SELF_STATE" "$ERR2_STATE"
   fi
 
   # --- Правило 6: «⏹ остановка» две проверки подряд — только лог (1 раз за эпизод) ---

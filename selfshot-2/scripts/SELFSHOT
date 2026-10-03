@@ -1,0 +1,121 @@
+#!/bin/bash
+# ════════════════════════════════════════════════════════════════
+#  SELFSHOT — скриншот/картинка → сетка (опц.) → в tmux с задачей
+#
+#  Использование:
+#    SELFSHOT                                    # снять экран, без сетки
+#    SELFSHOT --scale                            # снять экран + сетка
+#    SELFSHOT /path/to/img.png                   # взять готовый файл
+#    SELFSHOT --scale /path/to/img.png "задача"  # полный вариант
+#
+#  МОДУЛЬНОСТЬ: массив MODULES. Вставил имя — работает, убрал — пропало.
+#   Типы модулей:
+#     service   → стартует до скриншота, останавливается после (cursor-overlay)
+#     transform → обрабатывает картинку после снимка (grid-scale)
+# ════════════════════════════════════════════════════════════════
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+S="orchestrator-this-is-your-own-tmux-send-pictures-here-with-task"
+T="${S}:0"   # явный таргет: сессия + окно 0
+
+# ─── МОДУЛИ (вставить / удалить строку) ──────────────────────────
+MODULES=(
+  "service:cursor-overlay"    # плашка координат мыши
+  "transform:grid-scale"      # сетка на картинке (--scale включает, иначе нет)
+)
+# ────────────────────────────────────────────────────────────────
+
+# --- Парсинг аргументов ---
+SCALE=0
+FULL_GRID=0
+IMG_PATH=""
+TASK="Посмотри на скриншот (1920x1080) и опиши что видишь"
+
+for arg in "$@"; do
+  case "$arg" in
+    --scale) SCALE=1 ;;
+    --full-grid) FULL_GRID=1; SCALE=1 ;;
+    *.png|*.jpg|*.jpeg|*.bmp|*.webp) IMG_PATH="$arg" ;;
+    *) TASK="$arg" ;;
+  esac
+done
+
+# --- Проверка сессии tmux (до всего, чтобы не зря стартвать модули) ---
+if ! tmux has-session -t "$S" 2>/dev/null; then
+    echo "Критическая ошибка: Сессия tmux '$S' не найдена!" >&2
+    exit 1
+fi
+
+# --- PRE: стартуем service-модули ---
+PRE_STARTED=()
+for mod in "${MODULES[@]}"; do
+  type="${mod%%:*}"
+  name="${mod#*:}"
+  if [ "$type" = "service" ]; then
+    python3 "$SCRIPT_DIR/$name.py" start 2>/dev/null || true
+    PRE_STARTED+=("$name")
+  fi
+done
+
+sleep 0.5   # даём оверлею отрисоваться
+
+# --- CAPTURE: скриншот или готовый файл ---
+if [ -z "$IMG_PATH" ]; then
+  IMG_PATH="/tmp/selfshot_$(date +%Y%m%d_%H%M%S).png"
+  if command -v maim &>/dev/null; then
+    DISPLAY=:0 maim "$IMG_PATH"
+  elif command -v scrot &>/dev/null; then
+    DISPLAY=:0 scrot -z "$IMG_PATH"
+  else
+    DISPLAY=:0 gnome-screenshot -f "$IMG_PATH" 2>/dev/null
+  fi
+fi
+
+# --- TRANSFORM: обрабатываем картинку ---
+if [ "$SCALE" = "1" ]; then
+  for mod in "${MODULES[@]}"; do
+    type="${mod%%:*}"
+    name="${mod#*:}"
+    if [ "$type" = "transform" ] && [ -f "$SCRIPT_DIR/$name.py" ]; then
+      FULL_GRID_ARG=""
+      [ "$FULL_GRID" = "1" ] && FULL_GRID_ARG="--full-grid"
+      PROCESSED=$(python3 "$SCRIPT_DIR/$name.py" "$IMG_PATH" $FULL_GRID_ARG)
+      IMG_PATH="$PROCESSED"
+    fi
+  done
+fi
+
+# --- SEND: литеральный ввод + каскад Enter/C-m ---
+MESSAGE="[Сообщение из selfshot] Задача: $TASK | Файл: $IMG_PATH"
+
+# 1. ESC — выход из режима просмотра
+tmux send-keys -t "$T" C-[
+sleep 0.5
+
+# 2. Вставка задачи и картинки
+tmux send-keys -t "$T" -l "$MESSAGE"
+sleep 0.7
+
+# 3. Каскад: чередуем Enter / C-m, два раунда с задержкой
+for i in {1..2}; do
+    tmux send-keys -t "$T" Enter
+    sleep 0.7
+    tmux send-keys -t "$T" C-m
+    sleep 0.7
+done
+
+# --- POST: останавливаем service-модули (принудительно) ---
+stop_modules() {
+  for name in "${PRE_STARTED[@]}"; do
+    [ -n "$name" ] && python3 "$SCRIPT_DIR/$name.py" stop 2>/dev/null || true
+  done
+}
+
+# Если скрипт упадёт на любом этапе — модули всё равно выключатся
+trap stop_modules EXIT
+
+stop_modules
+
+echo "OK → $IMG_PATH в tmux"
