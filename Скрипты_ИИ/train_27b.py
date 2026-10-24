@@ -39,7 +39,7 @@ model, tokenizer = FastModel.from_pretrained(
 
 # --- LoRA: вместо 27B параметров учим только маленькие матрицы ---------------
 model = FastModel.get_peft_model(
-    model, r=32, lora_alpha=64, lora_dropout=0.0,   # rank/alpha — размерность и масштаб LoRA-вставок
+    model, r=16, lora_alpha=16, lora_dropout=0.0,   # rank/alpha — размерность и масштаб LoRA-вставок
     finetune_vision_layers     = False,             # визуальную часть не трогаем (модель текстовая)
     finetune_language_layers   = True,              # учим языковую часть целиком
     finetune_attention_modules = True,              # вставляем LoRA во внимательность
@@ -58,6 +58,24 @@ dataset = dataset.map(lambda _: MEDIUM)
 # заработает) и строки не будут глотаться как base64-изображения (фикс K3).
 text_tok = tokenizer.tokenizer if hasattr(tokenizer, "tokenizer") else tokenizer
 
+# --- Патч чат-шаблона: {% generation %} для точного маскирования -------------
+# Qwen3.8 шаблон не содержит {% generation %}, поэтому transformers не знает
+# где ответ assistant → Unsloth угадывает по пустому think-блоку, и примеры с
+# реальным reasoning_content теряют маску (все -100) → Unsloth их фильтрует.
+# Вставляем явные теги — loss корректно считается на thinking + answer.
+def _patch_template_with_generation(tmpl: str) -> str:
+    anchor = '{%- if preserve_thinking is undefined or preserve_thinking is true'
+    tool_elif = '{%- elif message.role == "tool" %}'
+    i_start = tmpl.find(anchor)
+    i_tool = tmpl.find(tool_elif)
+    assert i_start != -1 and i_tool != -1, "Qwen3.8 template structure changed"
+    tmpl = tmpl[:i_start] + '{% generation %}\n        ' + tmpl[i_start:]
+    i_tool += len('{% generation %}\n        ')  # смещение после первой вставки
+    tmpl = tmpl[:i_tool] + '{%- endgeneration %}\n    ' + tmpl[i_tool:]
+    return tmpl
+
+text_tok.chat_template = _patch_template_with_generation(text_tok.chat_template)
+
 # --- Настройки обучения -------------------------------------------------------
 trainer = SFTTrainer(
     model=model,                  # модель с LoRA-вставками
@@ -70,7 +88,7 @@ trainer = SFTTrainer(
         per_device_train_batch_size=1,     # 1 пример за шаг (VRAM не позволяет больше)
         gradient_accumulation_steps=4,     # накопить градиенты по 4 шагам ≈ батч из 4
         warmup_steps=10,                   # 10 первых шагов — медленно разгоняем learning rate
-        learning_rate=2e-4,                # шаг обучения (для LoRA можно смелее)
+        learning_rate=1e-4,                # шаг обучения (для LoRA можно смелее)
         logging_steps=1,                   # loss по строке на шаг — как в GUI
         optim="adamw_8bit",                # оптимизатор AdamW в 8-бит (экономия RAM)
         output_dir="./outputs_qwen38",      # куда писать логи/чекпоинты
