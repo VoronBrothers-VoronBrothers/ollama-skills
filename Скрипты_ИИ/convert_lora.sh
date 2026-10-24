@@ -18,10 +18,10 @@ OUT_GGUF="$ADAPTER_DIR/${BASENAME}-f16.gguf"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 LLAMA_CPP="/home/voron/Документы/VB-ollama/Git Clone-llama-and-others/llama.cpp-5060ti-sm120-cuda13"
-PYTHON="$SCRIPT_DIR/venv/bin/python"
+PYTHON="$(dirname "$SCRIPT_DIR")/venv/bin/python"
 # config.json базовой Qwen3.8-27B — иначе конвертер видит base_model_name_or_path
 # из adapter_config.json (4-bit bnb) и падает: "Quant method bitsandbytes".
-BASE_CONFIG="$SCRIPT_DIR/base_config"
+BASE_CONFIG="/home/voron/Документы/VB-ollama/Базы знаний/Цели-Проекты/#1 Дообучение ИИ/№2 Лора адаптер/base_config_27b"
 
 echo "Адаптер:  $ADAPTER_DIR"
 echo "Результат: $OUT_GGUF"
