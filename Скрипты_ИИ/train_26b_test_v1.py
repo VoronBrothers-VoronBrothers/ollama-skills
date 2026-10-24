@@ -62,7 +62,11 @@ trainer = SFTTrainer(
     eval_dataset=split_dataset["test"],    # Проверяем адекватность на скрытом тесте
 
     # Авто-стоппер: прервет обучение, если скрытый тест (eval_loss) начнет расти
-    callbacks=[EarlyStoppingCallback(early_stopping_patience=2)],
+    callbacks=[EarlyStoppingCallback(
+        early_stopping_patience=2,
+        early_stopping_threshold=0.01,  # улучшение меньше 0.01 не считается
+
+    )],
 
     args=SFTConfig(
         assistant_only_loss=True, # Loss считается ТОЛЬКО на ответах (и мыслях) ассистента
@@ -83,7 +87,7 @@ trainer = SFTTrainer(
         report_to="none",          # Отключаем отправку логов в сторонние облачные сервисы
 
         # --- Инструменты контроля и авто-валидации на лету ---
-        eval_strategy="steps", # Запускать скрытый тест по шагам
+        eval_strategy="steps",       # Запускать скрытый тест по шагам
         eval_steps=3,                # Проверяем адекватность модели каждые 3 шага
         save_strategy="steps",       # Сохраняем промежуточные точки для отката
         save_steps=3,
