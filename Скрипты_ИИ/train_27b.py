@@ -8,6 +8,9 @@ reasoning_content — TRL training-шаблон Qwen3.8 сам оборачив�
 Важно: dataset_num_proc=1 — иначе oom-killer убьёт процесс (>62 ГБ системы).
 
 Запуск: venv/bin/python train_27b.py [путь-к-dataset.jsonl]
+
+loss
+Для чат-данных часто сходится к 0.5–1.5, а для инструкций — к 0.3–0.8.
 """
 import sys
 
@@ -32,7 +35,7 @@ model, tokenizer = FastModel.from_pretrained(
 # --- LoRA ---------------------------------------------------------------------
 model = FastModel.get_peft_model(
     model,
-    r=16, lora_alpha=16, lora_dropout=0.0,
+    r=32, lora_alpha=32, lora_dropout=0.0,
     finetune_vision_layers     = False,
     finetune_language_layers   = True,
     finetune_attention_modules = True,
@@ -61,7 +64,7 @@ trainer = SFTTrainer(
         per_device_train_batch_size=1,
         gradient_accumulation_steps=4,
         warmup_steps=10,
-        learning_rate=1e-4,
+        learning_rate=2e-4,
         logging_steps=1,
         optim="adamw_8bit",
         output_dir="./outputs_qwen38",
