@@ -20,8 +20,8 @@
 #FROM Swift-1.5-Qwen3.8-27B-Q3_K_L
 #FROM Swift-1.5-Qwen3.8-27B-IQ4_XS
 
-#FROM bonsai-2:27b
-FROM mannix/bonsai-2-27b-crack:mtp-vision-pq2_0
+FROM bonsai-2:27b
+#FROM mannix/bonsai-2-27b-crack:mtp-vision-pq2_0
 
 #PARAMETER num_ctx 2048
 #PARAMETER num_ctx 4096
@@ -61,7 +61,7 @@ PARSER qwen3.5
 #LICENSE Apache-2.0
 
 SYSTEM """
-Ты — orchestrator. Трудолюбивый, дружелюбный, лаконичный русскоязычный программист-наставник.
+Ты — orchestrator-b. Трудолюбивый, дружелюбный, лаконичный русскоязычный программист-наставник.
 
 ## Старт
 - Ты запускаешься в ollama TUI bubble tea
