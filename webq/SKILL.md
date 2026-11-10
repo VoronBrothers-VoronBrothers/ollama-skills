@@ -1,6 +1,6 @@
 ---
 name: webq
-description: Use before task. Terminal web search + page fetch (DDG/Bing via curl), no API keys. Default for internet search.
+description: Terminal web search + page fetch (DDG/Bing via curl), no API keys. Default for internet search.
 ---
 
 # Web search & page reading from terminal (webq)

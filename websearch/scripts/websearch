@@ -1,0 +1,202 @@
+#!/usr/bin/env python3
+"""
+websearch — локальный веб-поиск через SearXNG (JSON API) для Ollama.
+
+Подкоманды:
+  websearch search <запрос> [N]      топ-N результатов (title / URL / snippet). N по умолчанию 5.
+  websearch get <URL>                текст страницы (curl -> elinks/lynx/w3m).
+  websearch check                    статус SearXNG + что json включён.
+
+Flags для search:
+  -n, --num N            сколько результатов (default 5)
+  --category CAT         categories SearXNG: general, news, science, it, images...
+  --time-range RANGE     day | month | year — фильтрует по свежести
+  --lang LANG            код языка (auto, en, ru...)
+  --json                 сырой JSON вместо человекочитаемого формата
+
+Среда:
+  SEARXNG_URL           URL API (default http://127.0.0.1:8888)
+"""
+import sys
+import os
+import json
+import shutil
+import subprocess
+
+import requests
+
+SEARXNG = os.environ.get("SEARXNG_URL", "http://127.0.0.1:8888")
+TIMEOUT = 25
+
+
+def die(msg, code=1):
+    sys.stderr.write(f"websearch: {msg}\n")
+    sys.exit(code)
+
+
+def http_get(url, params=None, timeout=TIMEOUT):
+    """GET с общим User-Agent (некоторые движки капризны к curl-агенту)."""
+    headers = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) websearch-local"}
+    return requests.get(url, params=params, headers=headers, timeout=timeout)
+
+
+def cmd_check():
+    try:
+        hz = http_get(f"{SEARXNG}/healthz", timeout=5)
+        print(f"healthz -> HTTP {hz.status_code}")
+    except Exception as e:  # noqa: BLE001
+        die(
+            "SearXNG недоступен. Запусти контейнер:\n"
+            f"  docker compose -f deploy/docker-compose.yml up -d\n"
+            f"(ошибка: {e})",
+            code=2,
+        )
+    # проверяем, что json включён (иначе 403)
+    try:
+        r = http_get(f"{SEARXNG}/search", params={"q": "test", "format": "json"}, timeout=15)
+        if r.status_code == 403:
+            die("JSON-формат не включён в settings.yml (formats: [html, json]).")
+        data = r.json()
+        print(f"search?format=json -> HTTP {r.status_code}, результатов на 'test': {len(data.get('results', []))}")
+    except Exception as e:  # noqa: BLE001
+        die(f"Ошибка JSON API: {e}", code=2)
+    print("OK")
+
+
+def cmd_search(query, num, category=None, time_range=None, lang="auto", as_json=False):
+    params = {"q": query, "format": "json", "language": lang}
+    if category:
+        params["categories"] = category
+    if time_range:
+        params["time_range"] = time_range
+    try:
+        r = http_get(f"{SEARXNG}/search", params=params)
+    except requests.exceptions.ConnectionError:
+        die(
+            "SearXNG недоступен (connection refused). Подними контейнер:\n"
+            "  docker compose -f deploy/docker-compose.yml up -d",
+            code=2,
+        )
+    except requests.exceptions.Timeout:
+        die("SearXNG не ответил вовремя (таймаут).", code=3)
+
+    if r.status_code == 403:
+        die("HTTP 403 — в settings.yml нет formats: [html, json].")
+    if r.status_code != 200:
+        die(f"SearXNG вернул HTTP {r.status_code}")
+
+    try:
+        data = r.json()
+    except ValueError:
+        die("Ответ SearXNG не JSON (возможно, html). Проверь format=json.")
+
+    results = data.get("results", [])[:num]
+    if not results:
+        print("Результатов не найдено. Попробуй другой запрос/категорию/язык.", file=sys.stderr)
+        return
+
+    if as_json:
+        keep = [{k: res.get(k) for k in ("title", "url", "content", "engine") if res.get(k)} for res in results]
+        print(json.dumps(keep, ensure_ascii=False, indent=2))
+        return
+
+    out = []
+    for i, res in enumerate(results, 1):
+        title = (res.get("title") or "(без названия)").strip()
+        url = res.get("url", "#")
+        snippet = " ".join((res.get("content") or "").split())
+        if len(snippet) > 400:
+            snippet = snippet[:397] + "..."
+        out.append(f"[{i}] {title}\n    URL: {url}\n    {snippet}")
+    print("\n\n".join(out))
+
+
+def _page_text(url):
+    """Текст страницы: curl -> elinks/lynx/w3m (первый доступный)."""
+    if not url.startswith("http"):
+        url = "https://" + url
+    html = subprocess.run(
+        ["curl", "-sL", "--max-time", str(TIMEOUT), "-A", "Mozilla/5.0 (X11; Linux x86_64)", url],
+        capture_output=True, text=True,
+    ).stdout
+    for tool in ("elinks", "lynx", "w3m"):
+        if not shutil.which(tool):
+            continue
+        flag = "-dump"  # все три умеют -dump
+        try:
+            res = subprocess.run([tool, flag], input=html, capture_output=True, text=True, timeout=TIMEOUT)
+            txt = " ".join(res.stdout.split())
+            if len(txt) >= 80:
+                return res.stdout
+        except Exception:  # noqa: BLE001
+            continue
+    # fallback: грубая чистка тегов
+    import re
+    txt = re.sub(r"(?is)<(script|style).*?</\1>", " ", html)
+    txt = re.sub(r"(?s)<[^>]+>", " ", txt)
+    return " ".join(txt.split())
+
+
+def cmd_get(url):
+    try:
+        text = _page_text(url)
+    except Exception as e:  # noqa: BLE001
+        die(f"Не удалось получить страницу: {e}", code=4)
+    if len(" ".join(text.split())) < 80:
+        sys.stderr.write(f"websearch: страница выглядит пустой или JS-рендером: {url}\n")
+    print(text)
+
+
+def main():
+    args = sys.argv[1:]
+    if not args or args[0] in ("-h", "--help"):
+        print(__doc__.strip())
+        return
+
+    cmd = args[0]
+    rest = args[1:]
+
+    if cmd == "check":
+        cmd_check()
+        return
+    if cmd == "get":
+        if not rest:
+            die("get требует URL")
+        cmd_get(rest[0])
+        return
+    if cmd == "search":
+        # отделить flags
+        num = 5
+        category = time_range = None
+        lang = "auto"
+        as_json = False
+        positional = []
+        i = 0
+        while i < len(rest):
+            a = rest[i]
+            if a in ("-n", "--num"):
+                num = int(rest[i + 1]); i += 2; continue
+            if a == "--category":
+                category = rest[i + 1]; i += 2; continue
+            if a == "--time-range":
+                time_range = rest[i + 1]; i += 2; continue
+            if a == "--lang":
+                lang = rest[i + 1]; i += 2; continue
+            if a == "--json":
+                as_json = True; i += 1; continue
+            positional.append(a); i += 1
+        # последний числовой позиционный аргумент = N (удобство)
+        query_parts = list(positional)
+        if len(query_parts) >= 2 and query_parts[-1].isdigit():
+            num = int(query_parts.pop())
+        if not query_parts:
+            die("search требует запрос")
+        cmd_search(" ".join(query_parts), num, category, time_range, lang, as_json)
+        return
+
+    # без подкоманды: treat как search (удобство)
+    cmd_search(*rest[:1], 5)
+
+
+if __name__ == "__main__":
+    main()
