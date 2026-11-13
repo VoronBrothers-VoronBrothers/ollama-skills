@@ -34,11 +34,15 @@ docker compose -f deploy/docker-compose.yml down    # stop
 If `websearch search` says "SearXNG недоступен", just run the `up -d` line above and retry.
 
 ## Rules & pitfalls
-- **HARD RULE — date anchor (обязательно):** Перед КАЖДЫМ поиском вставь в запрос текущий ГОД (а для «свежих»/новостей — месяц+число), чтобы (1) модель не теряла из виду, какая сейчас дата, и (2) поисковик отдавал актуальные данные. Реальную дату бери из своего системного контекста («Current date: …»). Примеры: `gpu prices 2026` (а не просто `gpu prices`), `election results November 2026`. Для новостей/свежести добавь `--time-range day|month`.
+- **HARD RULE — date anchor (обязательно):** Перед КАЖДЫМ поиском вставь в запрос текущий ГОД (а для «свежих»/новостей — месяц+число), чтобы (1) модель не теряла из виду, какая сейчас дата, и (2) поисковик отдавал актуальные данные. Реальную дату бери из своего системного контекста («Current date: …»). Примеры: `gpu prices 2027` (а не просто `gpu prices`), `election results November 2027`. Для новостей/свежести добавь `--time-range day|month`.
 - Always quote the query.
 - For fresh/time-sensitive facts add `--time-range month` (or day/year). Verify with ≥2 independent results before stating fast-changing facts as true.
 - SearXNG uses the host's datacenter IP to hit upstream engines, so individual engines can still get bot-walled — but aggregation across many engines makes it far more reliable than a single-engine scrape. If results look empty/garbage, retry once; if still bad, fall back to `webq` or the MCP browser (`skill mcp`).
-- JS-rendered sites: `get` returns mostly nav text for them. Prefer JSON API endpoints when available (works great with `get`).
+- JS-rendered sites: `get` returns mostly nav text or even a completely unrelated page (Docusaurus, GitHub UI). **Prefer JSON APIs / raw files** over scraping:
+  - GitHub → `https://api.github.com/repos/{owner}/{repo}/releases?per_page=5` (JSON) or `https://raw.githubusercontent.com/{owner}/{repo}/main/CHANGELOG.md`
+  - PyPI → `https://pypi.org/pypi/{package}/json`
+  - Docs sites with `/sitemap.xml` often have plain-text endpoints
+- Long pages: `| head -n 200` or grep keywords. Don't dump whole megapages into context.
 - Long pages: `| head -n 200` or grep keywords. Don't dump whole megapages into context.
 
 ## When to prefer which tool
