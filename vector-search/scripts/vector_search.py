@@ -102,11 +102,34 @@ def split_into_chunks(text: str, source: str) -> list[dict]:
     return chunks
 
 
+def load_file(fpath: Path) -> str | None:
+    """Read file content. Supports .txt, .md directly; .pdf via pdftotext."""
+    suffix = fpath.suffix.lower()
+    if suffix == ".pdf":
+        try:
+            import subprocess
+            result = subprocess.run(
+                ["pdftotext", "-layout", str(fpath), "-"],
+                capture_output=True, text=True, timeout=30,
+            )
+            if result.returncode != 0:
+                return None
+            return result.stdout
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            return None
+    else:
+        try:
+            return fpath.read_text(encoding="utf-8", errors="replace")
+        except Exception:
+            return None
+
+
 def collect_files(directory: Path) -> list[Path]:
-    """Collect .txt and .md files (top-level + subdirs, skip hidden)."""
+    """Collect .txt, .md, .pdf files (recursive, skip hidden)."""
+    supported = {".txt", ".md", ".pdf"}
     files = []
     for p in sorted(directory.rglob("*")):
-        if p.suffix.lower() in (".txt", ".md") and not any(
+        if p.suffix.lower() in supported and not any(
             part.startswith(".") for part in p.relative_to(directory).parts
         ):
             files.append(p)
@@ -240,10 +263,20 @@ def cmd_index(args):
         conn.execute("DELETE FROM chunks")
         conn.commit()
 
-    # Check which files are already indexed
+    # Auto-cleanup: remove chunks for files that no longer exist on disk
     existing_sources = set(
         row[0] for row in conn.execute("SELECT DISTINCT source FROM chunks").fetchall()
     )
+    current_files = {str(f) for f in collect_files(directory)}
+    stale_sources = existing_sources - current_files
+    if stale_sources:
+        placeholders = ",".join("?" * len(stale_sources))
+        conn.execute(
+            f"DELETE FROM chunks WHERE source IN ({placeholders})",
+            list(stale_sources),
+        )
+        conn.commit()
+        print(f"  [cleanup] removed {len(stale_sources)} stale files from index")
 
     total_chunks = 0
     new_files = []
@@ -257,10 +290,9 @@ def cmd_index(args):
             skipped += 1
             continue
 
-        try:
-            text = fpath.read_text(encoding="utf-8", errors="replace")
-        except Exception as e:
-            print(f"  [skip] {fpath}: {e}", file=sys.stderr)
+        text = load_file(fpath)
+        if text is None:
+            print(f"  [skip] {fpath.name}: could not read", file=sys.stderr)
             continue
 
         if len(text.strip()) < 20:

@@ -1,3 +1,8 @@
+---
+name: vector-search
+description: Semantic embedding-based search over ~/.ollama/knowledge/. Use when keyword/BM25 search (knowledge_search tool) is insufficient — synonyms, cross-language queries, conceptual matching.
+---
+
 # Vector Search (Embedding-based RAG)
 
 Semantic search over `~/.ollama/knowledge/` using an embedding model.
@@ -19,26 +24,26 @@ especially for: synonym queries, cross-language search, conceptual matching.
 
 ## How to run
 
-All commands from this skill directory:
+Script lives at `~/.ollama/skills/vector-search/scripts/vector_search.py`:
 
 ```bash
 # Check if index exists and is up-to-date
-python3 vector_search.py status
+python3 ~/.ollama/skills/vector-search/scripts/vector_search.py status
 
 # Index the knowledge base (first time or after adding files)
-python3 vector_search.py index
+python3 ~/.ollama/skills/vector-search/scripts/vector_search.py index
 
 # Force full reindex (after model change or corruption)
-python3 vector_search.py index --force
+python3 ~/.ollama/skills/vector-search/scripts/vector_search.py index --force
 
 # Search (returns JSON with top-k results, scores, sources)
-python3 vector_search.py search "your question here" --k 5
+python3 ~/.ollama/skills/vector-search/scripts/vector_search.py search "your question here" --k 5
 
 # Adjust sensitivity: lower min-score = more results but noisier
-python3 vector_search.py search "query" --min-score 0.70
+python3 ~/.ollama/skills/vector-search/scripts/vector_search.py search "query" --min-score 0.70
 
 # Use a different model (e.g., higher quality):
-python3 vector_search.py index --model qwen3-embedding:4b
+python3 ~/.ollama/skills/vector-search/scripts/vector_search.py index --model qwen3-embedding:4b
 ```
 
 ## Output format (search)
@@ -63,6 +68,10 @@ For best results on complex queries:
 - `--force` rebuilds everything
 - Default model: `qwen3-embedding:0.6b` (~470MB, fast on CPU)
 - For higher quality: `qwen3-embedding:4b` (slower but better multilingual)
+
+## Supported formats
+- `.txt`, `.md` — read directly
+- `.pdf` — extracted via `pdftotext -layout` (poppler-utils)
 
 ## Limitations
 
